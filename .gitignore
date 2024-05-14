@@ -33,3 +33,8 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
+
+# ****************************************
+# *           Start my files           *
+.env
+firebase-debug.log
