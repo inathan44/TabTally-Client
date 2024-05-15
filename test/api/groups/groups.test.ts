@@ -1,5 +1,5 @@
 import axios, { AxiosError } from 'axios';
-import { CreatedUser } from '../../../types/api';
+import { CreatedUser, GetGroupResponse } from '../../../types/api';
 import {
   createUserInDbAndFirebase,
   deleteUserFromDbAndFirebase,
@@ -24,6 +24,7 @@ import {
 import { createTransaction } from '../../../utils/transactionhelpers';
 
 let users: { [key: string]: CreatedUser } = {};
+const groups: GetGroupResponse[] = [];
 
 describe('Create and setup users', () => {
   it('should create 5 users without error', async () => {
@@ -73,6 +74,9 @@ describe('Creating groups', () => {
           },
           users[user].firebaseToken
         );
+
+        groups.push(group.data);
+
         expect(group.status).toBe(201);
       }
     } catch (e) {
@@ -96,6 +100,7 @@ describe('Creating groups', () => {
           },
           users[user].firebaseToken
         );
+        groups.push(group.data);
         expect(group.status).toBe(201);
       }
 
@@ -121,6 +126,7 @@ describe('Creating groups', () => {
         },
         'invalid token'
       );
+      groups.push(group.data);
     } catch (e) {
       isError = true;
       expect((e as AxiosError).response?.status).toBe(401);
@@ -156,6 +162,7 @@ describe('Creating groups', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(group.data);
     } catch (e) {
       isError = true;
       expect((e as AxiosError).response?.status).toBe(400);
@@ -172,6 +179,7 @@ describe('Creating groups', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(group.data);
       expect(group.status).toBe(201);
     } catch (e) {
       isError = true;
@@ -190,6 +198,7 @@ describe('Creating groups', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(group.data);
     } catch (e) {
       isError = true;
       expect((e as AxiosError).response?.status).toBe(400);
@@ -208,6 +217,7 @@ describe('Creating groups', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(group.data);
     } catch (e) {
       isError = true;
       expect((e as AxiosError).response?.status).toBe(400);
@@ -225,7 +235,7 @@ describe('Creating groups', () => {
         },
         users['oscar'].firebaseToken
       );
-
+      groups.push(newGroup.data);
       const group = await getGroup(
         newGroup.data.id,
         users['oscar'].firebaseToken
@@ -249,6 +259,8 @@ describe('Creating groups', () => {
         },
         users['ian'].firebaseToken
       );
+
+      groups.push(createdGroup.data);
 
       const newGroupResponse = await getGroup(
         createdGroup.data.id,
@@ -277,7 +289,7 @@ describe('Creating groups', () => {
   it('should have the correct values for the properties', async () => {
     let isError = false;
     try {
-      await createGroup(
+      const { data: newGroup } = await createGroup(
         {
           name: 'Correct Values',
           description: 'Checking for correct values',
@@ -285,8 +297,7 @@ describe('Creating groups', () => {
         users['ian'].firebaseToken
       );
 
-      const newGroupResponse = await getUserGroups(users['ian'].firebaseToken);
-      const newGroup = newGroupResponse.data[newGroupResponse.data.length - 1];
+      groups.push(newGroup);
 
       expect(newGroup.name).toBe('Correct Values');
       expect(newGroup.description).toBe('Checking for correct values');
@@ -305,16 +316,14 @@ describe('Creating groups', () => {
   it('should have the correct properties for the createdBy field', async () => {
     let isError = false;
     try {
-      await createGroup(
+      const { data: newGroup } = await createGroup(
         {
           name: 'Correct CreatedBy',
           description: 'Checking for correct createdBy',
         },
         users['ian'].firebaseToken
       );
-
-      const newGroupResponse = await getUserGroups(users['ian'].firebaseToken);
-      const newGroup = newGroupResponse.data[newGroupResponse.data.length - 1];
+      groups.push(newGroup);
 
       expect(Object.keys(newGroup.createdBy || {})).toEqual([
         'id',
@@ -334,16 +343,14 @@ describe('Creating groups', () => {
   it('should have the correct values for the createdBy field', async () => {
     let isError = false;
     try {
-      await createGroup(
+      const { data: newGroup } = await createGroup(
         {
           name: 'Correct CreatedBy',
           description: 'Checking for correct createdBy',
         },
         users['ian'].firebaseToken
       );
-
-      const newGroupResponse = await getUserGroups(users['ian'].firebaseToken);
-      const newGroup = newGroupResponse.data[newGroupResponse.data.length - 1];
+      groups.push(newGroup);
 
       expect(newGroup.createdBy).toBeDefined();
       expect(newGroup.createdBy?.id).toBe(users['ian'].firebaseUser.uid);
@@ -366,16 +373,14 @@ describe('Creating groups', () => {
   it('should have the correct properties for the groupMembers field', async () => {
     let isError = false;
     try {
-      await createGroup(
+      const { data: newGroup } = await createGroup(
         {
           name: 'Correct GroupMembers',
           description: 'Checking for correct groupMembers',
         },
         users['ian'].firebaseToken
       );
-
-      const newGroupResponse = await getUserGroups(users['ian'].firebaseToken);
-      const newGroup = newGroupResponse.data[newGroupResponse.data.length - 1];
+      groups.push(newGroup);
 
       expect(newGroup.groupMembers).toBeDefined();
       expect(newGroup.groupMembers?.length).toBe(1);
@@ -383,6 +388,7 @@ describe('Creating groups', () => {
         'id',
         'groupId',
         'memberId',
+        'member',
         'invitedById',
         'isAdmin',
         'status',
@@ -406,6 +412,7 @@ describe('Creating groups', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(newGroup.data);
 
       const getNewGroup = await getGroup(
         newGroup.data.id,
@@ -424,16 +431,14 @@ describe('Creating groups', () => {
   it('should have the correct values for the groupMembers field', async () => {
     let isError = false;
     try {
-      await createGroup(
+      const { data: newGroup } = await createGroup(
         {
           name: 'Correct GroupMembers',
           description: 'Checking for correct groupMembers',
         },
         users['ian'].firebaseToken
       );
-
-      const newGroupResponse = await getUserGroups(users['ian'].firebaseToken);
-      const newGroup = newGroupResponse.data[newGroupResponse.data.length - 1];
+      groups.push(newGroup);
 
       expect(newGroup.groupMembers).toBeDefined();
       expect(newGroup.groupMembers?.length).toBe(1);
@@ -468,6 +473,7 @@ describe('Getting one group', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToGet.data);
 
       const response = await getGroup(
         groupToGet.data.id,
@@ -490,6 +496,7 @@ describe('Getting one group', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToGet.data);
 
       const response = await getGroup(
         groupToGet.data.id,
@@ -515,6 +522,7 @@ describe('Getting one group', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToGet.data);
 
       const response = await getGroup(
         groupToGet.data.id,
@@ -548,6 +556,7 @@ describe('Getting one group', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToGet.data);
 
       const response = await getGroup(
         groupToGet.data.id,
@@ -579,6 +588,7 @@ describe('Getting one group', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToGet.data);
 
       const response = await getGroup(
         groupToGet.data.id,
@@ -611,6 +621,7 @@ describe('Getting one group', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToGet.data);
 
       const response = await getGroup(
         groupToGet.data.id,
@@ -644,6 +655,7 @@ describe('Getting one group', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToGet.data);
 
       const response = await getGroup(
         groupToGet.data.id,
@@ -681,6 +693,7 @@ describe('Getting one group', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToGet.data);
 
       await addMembers(
         groupToGet.data.id,
@@ -752,6 +765,7 @@ describe('Getting one group', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToGet.data);
 
       await addMembers(
         groupToGet.data.id,
@@ -850,6 +864,7 @@ describe('Getting one group', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToGet.data);
 
       const response = await getGroup(
         groupToGet.data.id,
@@ -888,6 +903,7 @@ describe('Getting one group', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToGet.data);
 
       const response = await getGroup(
         groupToGet.data.id,
@@ -924,6 +940,8 @@ describe('Updating groups', () => {
         { name: 'Group to update', description: 'This is a group to update' },
         users['ian'].firebaseToken
       );
+      groups.push(groupToUpdate.data);
+
       const response = await updateGroup(
         groupToUpdate.data.id,
         { description: 'Updated description', name: 'updated named' },
@@ -944,6 +962,7 @@ describe('Updating groups', () => {
         { name: 'Group to update', description: 'This is a group to update' },
         users['ian'].firebaseToken
       );
+      groups.push(groupToUpdate.data);
       const response = await updateGroup(
         groupToUpdate.data.id,
         { description: 'Updated description', name: 'updated named' },
@@ -964,6 +983,7 @@ describe('Updating groups', () => {
         { name: 'Group to update', description: 'This is a group to update' },
         users['ian'].firebaseToken
       );
+      groups.push(groupToUpdate.data);
       await updateGroup(
         groupToUpdate.data.id,
         { name: 'updated named' },
@@ -991,6 +1011,7 @@ describe('Updating groups', () => {
         { name: 'Group to update', description: 'This is a group to update' },
         users['ian'].firebaseToken
       );
+      groups.push(groupToUpdate.data);
       await updateGroup(
         groupToUpdate.data.id,
         { description: 'Updated description' },
@@ -1018,6 +1039,7 @@ describe('Updating groups', () => {
         { name: 'Group to update', description: 'This is a group to update' },
         users['ian'].firebaseToken
       );
+      groups.push(groupToUpdate.data);
       await updateGroup(
         groupToUpdate.data.id,
         { description: 'Updated description', name: 'updated named' },
@@ -1045,6 +1067,7 @@ describe('Updating groups', () => {
         { name: 'Group to update', description: 'This is a group to update' },
         users['ian'].firebaseToken
       );
+      groups.push(groupToUpdate.data);
 
       await updateGroup(
         groupToUpdate.data.id,
@@ -1074,7 +1097,7 @@ describe('Updating groups', () => {
         { name: 'Group to update', description: 'This is a group to update' },
         users['ian'].firebaseToken
       );
-
+      groups.push(groupToUpdate.data);
       const response = await updateGroup(
         groupToUpdate.data.id,
         { description: 'Updated description' },
@@ -1113,6 +1136,7 @@ describe('Updating groups', () => {
         { name: 'Group to update', description: 'This is a group to update' },
         users['ian'].firebaseToken
       );
+      groups.push(groupToUpdate.data);
 
       const response = await updateGroup(
         groupToUpdate.data.id,
@@ -1136,6 +1160,7 @@ describe('Updating groups', () => {
         { name: 'Group to update', description: 'This is a group to update' },
         users['ian'].firebaseToken
       );
+      groups.push(groupToUpdate.data);
 
       const response = await updateGroup(
         groupToUpdate.data.id,
@@ -1161,6 +1186,7 @@ describe('Updating groups', () => {
         { name: 'Group to update', description: 'This is a group to update' },
         users['ian'].firebaseToken
       );
+      groups.push(groupToUpdate.data);
 
       const response = await updateGroup(
         groupToUpdate.data.id,
@@ -1187,6 +1213,7 @@ describe('Updating groups', () => {
         { name: 'Group to update', description: 'This is a group to update' },
         users['ian'].firebaseToken
       );
+      groups.push(groupToUpdate.data);
 
       const response = await updateGroup(
         groupToUpdate.data.id,
@@ -1210,6 +1237,7 @@ describe('Updating groups', () => {
         { name: 'Group to update', description: 'This is a group to update' },
         users['ian'].firebaseToken
       );
+      groups.push(groupToUpdate.data);
 
       // Invite user to group
       await addMembers(
@@ -1240,6 +1268,7 @@ describe('Updating groups', () => {
         { name: 'Group to update', description: 'This is a group to update' },
         users['ian'].firebaseToken
       );
+      groups.push(groupToUpdate.data);
 
       await updateGroup(
         groupToUpdate.data.id,
@@ -1263,6 +1292,7 @@ describe('Updating groups', () => {
         { name: 'Group to update', description: 'This is a group to update' },
         users['ian'].firebaseToken
       );
+      groups.push(groupToUpdate.data);
 
       // Invite user to group
       await addMembers(
@@ -1312,6 +1342,7 @@ describe('Updating groups', () => {
         { name: 'Group to update', description: 'This is a group to update' },
         users['ian'].firebaseToken
       );
+      groups.push(groupToUpdate.data);
 
       // Invite user to group
       await addMembers(
@@ -1364,6 +1395,7 @@ describe('Deleting groups', () => {
         { name: 'Group to delete', description: 'This is a group to delete' },
         users['ian'].firebaseToken
       );
+      groups.push(groupToDelete.data);
 
       const response = await deleteGroup(
         groupToDelete.data.id,
@@ -1384,6 +1416,7 @@ describe('Deleting groups', () => {
         { name: 'Group to delete', description: 'This is a group to delete' },
         users['ian'].firebaseToken
       );
+      groups.push(groupToDelete.data);
 
       const response = await deleteGroup(
         groupToDelete.data.id,
@@ -1416,6 +1449,7 @@ describe('Deleting groups', () => {
         { name: 'Group to delete', description: 'This is a group to delete' },
         users['ian'].firebaseToken
       );
+      groups.push(groupToDelete.data);
 
       const response = await deleteGroup(
         groupToDelete.data.id,
@@ -1438,6 +1472,7 @@ describe('Deleting groups', () => {
         { name: 'Group to delete', description: 'This is a group to delete' },
         users['ian'].firebaseToken
       );
+      groups.push(groupToDelete.data);
 
       // Invite user to group
       await addMembers(
@@ -1475,6 +1510,7 @@ describe('Deleting groups', () => {
         { name: 'Group to delete', description: 'This is a group to delete' },
         users['ian'].firebaseToken
       );
+      groups.push(groupToDelete.data);
 
       // Invite user to group
       await addMembers(
@@ -1519,6 +1555,7 @@ describe('Deleting groups', () => {
         { name: 'Group to delete', description: 'This is a group to delete' },
         users['ian'].firebaseToken
       );
+      groups.push(groupToDelete.data);
 
       const response = await deleteGroup(
         groupToDelete.data.id,
@@ -1538,6 +1575,7 @@ describe('Deleting groups', () => {
         { name: 'Group to delete', description: 'This is a group to delete' },
         users['ian'].firebaseToken
       );
+      groups.push(groupToDelete.data);
 
       await getGroup(groupToDelete.data.id, users['ian'].firebaseToken);
 
@@ -1561,6 +1599,7 @@ describe('Deleting groups', () => {
         { name: 'Group to delete', description: 'This is a group to delete' },
         users['ian'].firebaseToken
       );
+      groups.push(groupToDelete.data);
 
       // Invite user to group
       await addMembers(
@@ -1664,6 +1703,8 @@ describe('adding members to groups', () => {
         users['ian'].firebaseToken
       );
 
+      groups.push(groupToAddMember.data);
+
       const response = await addMembers(
         groupToAddMember.data.id,
         { memberIds: [users['david'].firebaseUser.uid] },
@@ -1688,6 +1729,8 @@ describe('adding members to groups', () => {
         users['ian'].firebaseToken
       );
 
+      groups.push(groupToAddMember.data);
+
       const response = await addMembers(
         groupToAddMember.data.id,
         { memberIds: [users['david'].firebaseUser.uid] },
@@ -1711,6 +1754,8 @@ describe('adding members to groups', () => {
         },
         users['ian'].firebaseToken
       );
+
+      groups.push(groupToAddMember.data);
 
       const response = await addMembers(
         groupToAddMember.data.id,
@@ -1758,6 +1803,8 @@ describe('adding members to groups', () => {
         users['ian'].firebaseToken
       );
 
+      groups.push(groupToAddMember.data);
+
       const response = await addMembers(
         groupToAddMember.data.id,
         { memberIds: ['invalid-user-id'] },
@@ -1783,6 +1830,8 @@ describe('adding members to groups', () => {
         },
         users['ian'].firebaseToken
       );
+
+      groups.push(groupToAddMember.data);
 
       const response = await addMembers(
         groupToAddMember.data.id,
@@ -1810,6 +1859,8 @@ describe('adding members to groups', () => {
         users['ian'].firebaseToken
       );
 
+      groups.push(groupToAddMember.data);
+
       const response = await addMembers(
         groupToAddMember.data.id,
         { memberIds: [] },
@@ -1835,6 +1886,8 @@ describe('adding members to groups', () => {
         },
         users['ian'].firebaseToken
       );
+
+      groups.push(groupToAddMember.data);
 
       await addMembers(
         groupToAddMember.data.id,
@@ -1867,6 +1920,8 @@ describe('adding members to groups', () => {
         },
         users['ian'].firebaseToken
       );
+
+      groups.push(groupToAddMember.data);
 
       await addMembers(
         groupToAddMember.data.id,
@@ -1907,6 +1962,8 @@ describe('adding members to groups', () => {
         users['ian'].firebaseToken
       );
 
+      groups.push(groupToAddMember.data);
+
       const currentGroupMembers = await getAllGroupMembers();
 
       await addMembers(
@@ -1930,13 +1987,16 @@ describe('adding members to groups', () => {
 
       const groupMembersAfterDecline = await getAllGroupMembers();
 
+      const declinedGroupMember = groupMembersAfterDecline.data.find(
+        (member) =>
+          member.memberId === users['david'].firebaseUser.uid &&
+          member.groupId === groupToAddMember.data.id
+      );
+
       expect(groupMembersAfterDecline.data.length).toBe(
         groupMembersAfterInvite.data.length
       );
-      expect(
-        groupMembersAfterDecline.data[groupMembersAfterDecline.data.length - 1]
-          .status
-      ).toBe('Declined');
+      expect(declinedGroupMember?.status).toBe('Declined');
 
       await addMembers(
         groupToAddMember.data.id,
@@ -1949,11 +2009,14 @@ describe('adding members to groups', () => {
       expect(groupMembersAfterReinvite.data.length).toBe(
         currentGroupMembers.data.length + 1
       );
-      expect(
-        groupMembersAfterReinvite.data[
-          groupMembersAfterReinvite.data.length - 1
-        ].status
-      ).toBe('Invited');
+
+      const reinvitedGroupMember = groupMembersAfterReinvite.data.find(
+        (member) =>
+          member.memberId === users['david'].firebaseUser.uid &&
+          member.groupId === groupToAddMember.data.id
+      );
+
+      expect(reinvitedGroupMember?.status).toBe('Invited');
     } catch (e) {
       isError = true;
       console.error('Error adding member to group', e);
@@ -1972,6 +2035,8 @@ describe('adding members to groups', () => {
         users['ian'].firebaseToken
       );
 
+      groups.push(groupToAddMember.data);
+
       await addMembers(
         groupToAddMember.data.id,
         { memberIds: [users['david'].firebaseUser.uid] },
@@ -1986,18 +2051,26 @@ describe('adding members to groups', () => {
       );
 
       const groupMembersAfterJoining = await getAllGroupMembers();
-      expect(
-        groupMembersAfterJoining.data[groupMembersAfterJoining.data.length - 1]
-          .status
-      ).toBe('Joined');
+
+      const joinedGroupMember = groupMembersAfterJoining.data.find(
+        (member) =>
+          member.memberId === users['david'].firebaseUser.uid &&
+          member.groupId === groupToAddMember.data.id
+      );
+
+      expect(joinedGroupMember?.status).toBe('Joined');
 
       await leaveGroup(groupToAddMember.data.id, users['david'].firebaseToken);
 
       const groupMembersAfterLeaving = await getAllGroupMembers();
-      expect(
-        groupMembersAfterLeaving.data[groupMembersAfterLeaving.data.length - 1]
-          .status
-      ).toBe('Left');
+
+      const leftGroupMember = groupMembersAfterLeaving.data.find(
+        (member) =>
+          member.memberId === users['david'].firebaseUser.uid &&
+          member.groupId === groupToAddMember.data.id
+      );
+
+      expect(leftGroupMember?.status).toBe('Left');
 
       await addMembers(
         groupToAddMember.data.id,
@@ -2006,11 +2079,14 @@ describe('adding members to groups', () => {
       );
 
       const groupMembersAfterReinvite = await getAllGroupMembers();
-      expect(
-        groupMembersAfterReinvite.data[
-          groupMembersAfterReinvite.data.length - 1
-        ].status
-      ).toBe('Invited');
+
+      const reinvitedGroupMember = groupMembersAfterReinvite.data.find(
+        (member) =>
+          member.memberId === users['david'].firebaseUser.uid &&
+          member.groupId === groupToAddMember.data.id
+      );
+
+      expect(reinvitedGroupMember?.status).toBe('Invited');
     } catch (e) {
       isError = true;
       console.error('Error adding member to group', e);
@@ -2027,6 +2103,8 @@ describe('adding members to groups', () => {
         },
         users['ian'].firebaseToken
       );
+
+      groups.push(groupToAddMember.data);
 
       await addMembers(
         groupToAddMember.data.id,
@@ -2074,6 +2152,8 @@ describe('adding members to groups', () => {
         users['ian'].firebaseToken
       );
 
+      groups.push(groupToAddMember.data);
+
       await addMembers(
         groupToAddMember.data.id,
         { memberIds: [users['david'].firebaseUser.uid] },
@@ -2095,9 +2175,14 @@ describe('adding members to groups', () => {
       );
 
       const groupMembersAfterKick = await getAllGroupMembers();
-      expect(
-        groupMembersAfterKick.data[groupMembersAfterKick.data.length - 1].status
-      ).toBe('Kicked');
+
+      const kickedGroupMember = groupMembersAfterKick.data.find(
+        (member) =>
+          member.memberId === users['david'].firebaseUser.uid &&
+          member.groupId === groupToAddMember.data.id
+      );
+
+      expect(kickedGroupMember?.status).toBe('Kicked');
 
       await addMembers(
         groupToAddMember.data.id,
@@ -2106,11 +2191,14 @@ describe('adding members to groups', () => {
       );
 
       const groupMembersAfterReinvite = await getAllGroupMembers();
-      expect(
-        groupMembersAfterReinvite.data[
-          groupMembersAfterReinvite.data.length - 1
-        ].status
-      ).toBe('Invited');
+
+      const reinvitedMember = groupMembersAfterReinvite.data.find(
+        (member) =>
+          member.memberId === users['david'].firebaseUser.uid &&
+          member.groupId === groupToAddMember.data.id
+      );
+
+      expect(reinvitedMember?.status).toBe('Invited');
     } catch (e) {
       isError = true;
       console.error('Error adding member to group', e);
@@ -2129,6 +2217,8 @@ describe('adding members to groups', () => {
         users['ian'].firebaseToken
       );
 
+      groups.push(groupToAddMember.data);
+
       const currentGroupMembers = await getAllGroupMembers();
 
       const memberIds = [
@@ -2136,7 +2226,7 @@ describe('adding members to groups', () => {
         users['oscar'].firebaseUser.uid,
       ];
 
-      const response = await addMembers(
+      await addMembers(
         groupToAddMember.data.id,
         { memberIds },
         users['ian'].firebaseToken
@@ -2163,6 +2253,8 @@ describe('adding members to groups', () => {
         },
         users['ian'].firebaseToken
       );
+
+      groups.push(groupToAddMember.data);
 
       const currentGroupMembers = await getAllGroupMembers();
 
@@ -2204,6 +2296,8 @@ describe('adding members to groups', () => {
         users['ian'].firebaseToken
       );
 
+      groups.push(groupToAddMember.data);
+
       const currentGroupMembers = await getAllGroupMembers();
 
       const memberIds = [
@@ -2211,7 +2305,7 @@ describe('adding members to groups', () => {
         users['oscar'].firebaseUser.uid,
       ];
 
-      const response = await addMembers(
+      await addMembers(
         groupToAddMember.data.id,
         { memberIds: [users['david'].firebaseUser.uid] },
         users['ian'].firebaseToken
@@ -2262,6 +2356,8 @@ describe('leaving a group', () => {
         users['ian'].firebaseToken
       );
 
+      groups.push(groupToLeave.data);
+
       await addMembers(
         groupToLeave.data.id,
         { memberIds: [users['david'].firebaseUser.uid] },
@@ -2294,6 +2390,8 @@ describe('leaving a group', () => {
         { name: 'Group to leave', description: 'This is a group to leave' },
         users['ian'].firebaseToken
       );
+
+      groups.push(groupToLeave.data);
 
       await addMembers(
         groupToLeave.data.id,
@@ -2328,6 +2426,8 @@ describe('leaving a group', () => {
         users['ian'].firebaseToken
       );
 
+      groups.push(groupToLeave.data);
+
       await addMembers(
         groupToLeave.data.id,
         { memberIds: [users['david'].firebaseUser.uid] },
@@ -2345,9 +2445,13 @@ describe('leaving a group', () => {
 
       const groupMembers = await getAllGroupMembers();
 
-      expect(groupMembers.data[groupMembers.data.length - 1].status).toBe(
-        'Left'
+      const leftMember = groupMembers.data.find(
+        (member) =>
+          member.memberId === users['david'].firebaseUser.uid &&
+          member.groupId === groupToLeave.data.id
       );
+
+      expect(leftMember?.status).toBe('Left');
     } catch (e) {
       isError = true;
       console.error('Error leaving group', e);
@@ -2362,6 +2466,8 @@ describe('leaving a group', () => {
         { name: 'Group to leave', description: 'This is a group to leave' },
         users['ian'].firebaseToken
       );
+
+      groups.push(groupToLeave.data);
 
       const currentGroupMembers = await getAllGroupMembers();
 
@@ -2406,6 +2512,8 @@ describe('leaving a group', () => {
         users['ian'].firebaseToken
       );
 
+      groups.push(groupToLeave.data);
+
       const response = await leaveGroup(
         groupToLeave.data.id,
         users['david'].firebaseToken
@@ -2427,6 +2535,8 @@ describe('leaving a group', () => {
         { name: 'Group to leave', description: 'This is a group to leave' },
         users['ian'].firebaseToken
       );
+
+      groups.push(groupToLeave.data);
 
       await addMembers(
         groupToLeave.data.id,
@@ -2453,6 +2563,8 @@ describe('leaving a group', () => {
         { name: 'Group to leave', description: 'This is a group to leave' },
         users['ian'].firebaseToken
       );
+
+      groups.push(groupToLeave.data);
 
       await addMembers(
         groupToLeave.data.id,
@@ -2496,6 +2608,8 @@ describe('leaving a group', () => {
         users['ian'].firebaseToken
       );
 
+      groups.push(groupToLeave.data);
+
       await addMembers(
         groupToLeave.data.id,
         { memberIds: [users['david'].firebaseUser.uid] },
@@ -2536,6 +2650,8 @@ describe('leaving a group', () => {
         users['ian'].firebaseToken
       );
 
+      groups.push(groupToLeave.data);
+
       const response = await leaveGroup(
         groupToLeave.data.id,
         users['ian'].firebaseToken
@@ -2557,6 +2673,8 @@ describe('leaving a group', () => {
         { name: 'Group to leave', description: 'This is a group to leave' },
         users['ian'].firebaseToken
       );
+
+      groups.push(groupToLeave.data);
 
       await addMembers(
         groupToLeave.data.id,
@@ -2602,6 +2720,8 @@ describe('leaving a group', () => {
         { name: 'Group to leave', description: 'This is a group to leave' },
         users['ian'].firebaseToken
       );
+
+      groups.push(groupToLeave.data);
 
       const currentGroupMembers = await getAllGroupMembers();
 
@@ -2690,6 +2810,8 @@ describe('leaving a group', () => {
         users['ian'].firebaseToken
       );
 
+      groups.push(groupToLeave.data);
+
       await addMembers(
         groupToLeave.data.id,
         { memberIds: [users['david'].firebaseUser.uid] },
@@ -2724,8 +2846,6 @@ describe('leaving a group', () => {
       const [transactionBeforeLeaving] =
         responseBeforeLeaving.data.transactions;
 
-      console.log('transaction before leaving', transactionBeforeLeaving);
-
       expect(transactionBeforeLeaving.payerId).toBe(
         users['ian'].firebaseUser.uid
       );
@@ -2745,8 +2865,6 @@ describe('leaving a group', () => {
       );
 
       const [transaction] = response.data.transactions;
-
-      console.log('recipient removed transaction', transaction);
 
       expect(transaction.payerId).toBe(users['ian'].firebaseUser.uid);
       const transactionDetails = transaction.transactionDetails;
@@ -2773,6 +2891,8 @@ describe('leaving a group', () => {
         { name: 'Group to leave', description: 'This is a group to leave' },
         users['ian'].firebaseToken
       );
+
+      groups.push(groupToLeave.data);
 
       await addMembers(
         groupToLeave.data.id,
@@ -2834,6 +2954,8 @@ describe('leaving a group', () => {
         { name: 'Group to leave', description: 'This is a group to leave' },
         users['ian'].firebaseToken
       );
+
+      groups.push(groupToLeave.data);
 
       await addMembers(
         groupToLeave.data.id,
@@ -2909,6 +3031,7 @@ describe('Removing a group member', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToRemoveMember.data);
 
       await addMembers(
         groupToRemoveMember.data.id,
@@ -2946,6 +3069,7 @@ describe('Removing a group member', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToRemoveMember.data);
 
       await addMembers(
         groupToRemoveMember.data.id,
@@ -2984,6 +3108,7 @@ describe('Removing a group member', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToRemoveMember.data);
 
       await addMembers(
         groupToRemoveMember.data.id,
@@ -3030,6 +3155,7 @@ describe('Removing a group member', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToRemoveMember.data);
 
       const currentGroupMembers = await getAllGroupMembers();
 
@@ -3080,6 +3206,7 @@ describe('Removing a group member', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToRemoveMember.data);
 
       await addMembers(
         groupToRemoveMember.data.id,
@@ -3131,6 +3258,7 @@ describe('Removing a group member', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToRemoveMember.data);
 
       await addMembers(
         groupToRemoveMember.data.id,
@@ -3167,6 +3295,7 @@ describe('Removing a group member', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToRemoveMember.data);
 
       await addMembers(
         groupToRemoveMember.data.id,
@@ -3221,6 +3350,7 @@ describe('Removing a group member', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToRemoveMember.data);
 
       await addMembers(
         groupToRemoveMember.data.id,
@@ -3276,6 +3406,7 @@ describe('Removing a group member', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToRemoveMember.data);
 
       const response = await removeMember(
         groupToRemoveMember.data.id,
@@ -3300,6 +3431,7 @@ describe('Removing a group member', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToRemoveMember.data);
 
       const response = await removeMember(
         groupToRemoveMember.data.id,
@@ -3324,6 +3456,7 @@ describe('Removing a group member', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToRemoveMember.data);
 
       await addMembers(
         groupToRemoveMember.data.id,
@@ -3367,6 +3500,7 @@ describe('Removing a group member', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToRemoveMember.data);
 
       await addMembers(
         groupToRemoveMember.data.id,
@@ -3414,6 +3548,7 @@ describe('Removing a group member', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToRemoveMember.data);
 
       await addMembers(
         groupToRemoveMember.data.id,
@@ -3451,6 +3586,7 @@ describe('Removing a group member', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToRemoveMember.data);
 
       await addMembers(
         groupToRemoveMember.data.id,
@@ -3481,6 +3617,7 @@ describe('Removing a group member', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToRemoveMember.data);
 
       await addMembers(
         groupToRemoveMember.data.id,
@@ -3523,6 +3660,7 @@ describe('Removing a group member', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToRemoveMember.data);
 
       const response = await removeMember(
         groupToRemoveMember.data.id,
@@ -3549,6 +3687,7 @@ describe('Removing a group member', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToRemoveMember.data);
 
       await addMembers(
         groupToRemoveMember.data.id,
@@ -3591,6 +3730,7 @@ describe('Removing a group member', () => {
         },
         users['ian'].firebaseToken
       );
+      groups.push(groupToRemoveMember.data);
 
       await addMembers(
         groupToRemoveMember.data.id,
@@ -3632,7 +3772,459 @@ describe('Removing a group member', () => {
     }
     expect(isError).toBe(false);
   });
+
+  it('should have the same number of tranactions after removing a member', async () => {
+    let isError = false;
+    try {
+      const groupToRemoveMember = await createGroup(
+        {
+          name: 'Group to remove member',
+          description: 'This is a group to remove member',
+        },
+        users['ian'].firebaseToken
+      );
+      groups.push(groupToRemoveMember.data);
+
+      await addMembers(
+        groupToRemoveMember.data.id,
+        {
+          memberIds: [
+            users['david'].firebaseUser.uid,
+            users['oscar'].firebaseUser.uid,
+          ],
+        },
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToRemoveMember.data.id,
+        users['david'].firebaseUser.uid,
+        'Joined',
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToRemoveMember.data.id,
+        users['oscar'].firebaseUser.uid,
+        'Joined',
+        users['oscar'].firebaseToken
+      );
+
+      const groupBeforeTransactions = await getGroup(
+        groupToRemoveMember.data.id,
+        users['ian'].firebaseToken
+      );
+
+      // User creates the transaction but isn't part of it
+      await createTransaction(
+        {
+          amount: 100,
+          description: 'Test transaction',
+          groupId: groupToRemoveMember.data.id,
+          payerId: users['ian'].firebaseUser.uid,
+          transactionDetails: [
+            { amount: 50, recipientId: users['ian'].firebaseUser.uid },
+            { amount: 50, recipientId: users['oscar'].firebaseUser.uid },
+          ],
+        },
+        users['david'].firebaseToken
+      );
+
+      // user creates the transaction as a recipient and payer
+      await createTransaction(
+        {
+          amount: 100,
+          description: 'Test transaction',
+          groupId: groupToRemoveMember.data.id,
+          payerId: users['david'].firebaseUser.uid,
+          transactionDetails: [
+            { amount: 50, recipientId: users['ian'].firebaseUser.uid },
+            { amount: 50, recipientId: users['david'].firebaseUser.uid },
+          ],
+        },
+        users['david'].firebaseToken
+      );
+
+      // user is only a recipient
+      await createTransaction(
+        {
+          amount: 100,
+          description: 'Test transaction',
+          groupId: groupToRemoveMember.data.id,
+          payerId: users['oscar'].firebaseUser.uid,
+          transactionDetails: [
+            { amount: 100, recipientId: users['david'].firebaseUser.uid },
+          ],
+        },
+        users['oscar'].firebaseToken
+      );
+
+      // user is only a payer
+      await createTransaction(
+        {
+          amount: 100,
+          description: 'Test transaction',
+          groupId: groupToRemoveMember.data.id,
+          payerId: users['david'].firebaseUser.uid,
+          transactionDetails: [
+            { amount: 100, recipientId: users['ian'].firebaseUser.uid },
+          ],
+        },
+        users['david'].firebaseToken
+      );
+
+      const groupsAfterTransactions = await getGroup(
+        groupToRemoveMember.data.id,
+        users['ian'].firebaseToken
+      );
+
+      expect(groupsAfterTransactions.data.transactions.length).toBe(
+        groupBeforeTransactions.data.transactions.length + 4
+      );
+
+      await removeMember(
+        groupToRemoveMember.data.id,
+        users['david'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+
+      const groupsAfterRemoving = await getGroup(
+        groupToRemoveMember.data.id,
+        users['ian'].firebaseToken
+      );
+
+      expect(groupsAfterRemoving.data.transactions.length).toBe(
+        groupsAfterTransactions.data.transactions.length
+      );
+      expect(groupsAfterRemoving.data.transactions.length).toBe(
+        groupBeforeTransactions.data.transactions.length + 4
+      );
+    } catch (e) {
+      isError = true;
+      console.error('Error removing member from group', e);
+    }
+    expect(isError).toBe(false);
+  });
+
+  it('should remove the user information from transactions if they are the payer only', async () => {
+    let isError = false;
+    try {
+      const groupToRemoveMember = await createGroup(
+        {
+          name: 'Group to remove member',
+          description: 'This is a group to remove member',
+        },
+        users['ian'].firebaseToken
+      );
+      groups.push(groupToRemoveMember.data);
+
+      await addMembers(
+        groupToRemoveMember.data.id,
+        {
+          memberIds: [users['david'].firebaseUser.uid],
+        },
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToRemoveMember.data.id,
+        users['david'].firebaseUser.uid,
+        'Joined',
+        users['david'].firebaseToken
+      );
+
+      await createTransaction(
+        {
+          amount: 100,
+          description: 'Test transaction',
+          groupId: groupToRemoveMember.data.id,
+          payerId: users['david'].firebaseUser.uid,
+          transactionDetails: [
+            { amount: 100, recipientId: users['ian'].firebaseUser.uid },
+          ],
+        },
+        users['ian'].firebaseToken
+      );
+
+      await removeMember(
+        groupToRemoveMember.data.id,
+        users['david'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+
+      const groupAfterRemoving = await getGroup(
+        groupToRemoveMember.data.id,
+        users['ian'].firebaseToken
+      );
+
+      const [transaction] = groupAfterRemoving.data.transactions;
+
+      expect(transaction.payerId).toBeNull();
+      expect(transaction.payer).toBeNull();
+    } catch (e) {
+      isError = true;
+      console.error('Error removing member from group', e);
+    }
+    expect(isError).toBe(false);
+  });
+
+  it('should remove the user information from transactions if they are the recipient only', async () => {
+    let isError = false;
+    try {
+      const groupToRemoveMember = await createGroup(
+        {
+          name: 'Group to remove member',
+          description: 'This is a group to remove member',
+        },
+        users['ian'].firebaseToken
+      );
+      groups.push(groupToRemoveMember.data);
+
+      await addMembers(
+        groupToRemoveMember.data.id,
+        {
+          memberIds: [
+            users['david'].firebaseUser.uid,
+            users['oscar'].firebaseUser.uid,
+          ],
+        },
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToRemoveMember.data.id,
+        users['david'].firebaseUser.uid,
+        'Joined',
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToRemoveMember.data.id,
+        users['oscar'].firebaseUser.uid,
+        'Joined',
+        users['oscar'].firebaseToken
+      );
+
+      await createTransaction(
+        {
+          amount: 100,
+          description: 'Test transaction',
+          groupId: groupToRemoveMember.data.id,
+          payerId: users['ian'].firebaseUser.uid,
+          transactionDetails: [
+            { amount: 60, recipientId: users['david'].firebaseUser.uid },
+            { amount: 40, recipientId: users['oscar'].firebaseUser.uid },
+          ],
+        },
+        users['ian'].firebaseToken
+      );
+
+      await removeMember(
+        groupToRemoveMember.data.id,
+        users['david'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+
+      const groupAfterRemoving = await getGroup(
+        groupToRemoveMember.data.id,
+        users['ian'].firebaseToken
+      );
+
+      const [transaction] = groupAfterRemoving.data.transactions;
+
+      const davidTransaction = transaction.transactionDetails?.find(
+        (td) => td.recipientId === null && td.amount === 60
+      );
+
+      const oscarsTransaction = transaction.transactionDetails?.find(
+        (td) => td.recipientId === users['oscar'].firebaseUser.uid
+      );
+
+      expect(davidTransaction).toBeDefined();
+      expect(davidTransaction?.recipientId).toBe(null);
+      expect(davidTransaction?.recipient).toBe(null);
+      expect(davidTransaction?.amount).toBe(60);
+      expect(oscarsTransaction).toBeDefined();
+      expect(transaction.transactionDetails?.length).toBe(2);
+    } catch (e) {
+      isError = true;
+      console.error('Error removing member from group', e);
+    }
+    expect(isError).toBe(false);
+  });
+
+  it('should remove the user information from transactions if they are the payer and recipient', async () => {
+    let isError = false;
+    try {
+      const groupToRemoveMember = await createGroup(
+        {
+          name: 'Group to remove member',
+          description: 'This is a group to remove member',
+        },
+        users['ian'].firebaseToken
+      );
+      groups.push(groupToRemoveMember.data);
+
+      await addMembers(
+        groupToRemoveMember.data.id,
+        {
+          memberIds: [
+            users['david'].firebaseUser.uid,
+            users['oscar'].firebaseUser.uid,
+          ],
+        },
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToRemoveMember.data.id,
+        users['david'].firebaseUser.uid,
+        'Joined',
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToRemoveMember.data.id,
+        users['oscar'].firebaseUser.uid,
+        'Joined',
+        users['oscar'].firebaseToken
+      );
+
+      await createTransaction(
+        {
+          amount: 100,
+          description: 'Test transaction',
+          groupId: groupToRemoveMember.data.id,
+          payerId: users['david'].firebaseUser.uid,
+          transactionDetails: [
+            { amount: 60, recipientId: users['david'].firebaseUser.uid },
+            { amount: 40, recipientId: users['oscar'].firebaseUser.uid },
+          ],
+        },
+        users['ian'].firebaseToken
+      );
+
+      await removeMember(
+        groupToRemoveMember.data.id,
+        users['david'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+
+      const groupAfterRemoving = await getGroup(
+        groupToRemoveMember.data.id,
+        users['ian'].firebaseToken
+      );
+
+      const [transaction] = groupAfterRemoving.data.transactions;
+
+      expect(transaction.payerId).toBe(null);
+
+      const davidTransaction = transaction.transactionDetails?.find(
+        (td) => td.recipientId === null && td.amount === 60
+      );
+
+      const oscarsTransaction = transaction.transactionDetails?.find(
+        (td) => td.recipientId === users['oscar'].firebaseUser.uid
+      );
+
+      expect(davidTransaction).toBeDefined();
+      expect(davidTransaction?.recipientId).toBe(null);
+      expect(davidTransaction?.recipient).toBeNull();
+      expect(davidTransaction?.amount).toBe(60);
+      expect(oscarsTransaction).toBeDefined();
+      expect(oscarsTransaction?.recipientId).toBe(
+        users['oscar'].firebaseUser.uid
+      );
+      expect(oscarsTransaction?.recipient).toBeDefined();
+      expect(transaction.transactionDetails?.length).toBe(2);
+    } catch (e) {
+      isError = true;
+      console.error('Error removing member from group', e);
+    }
+    expect(isError).toBe(false);
+  });
+
+  it('should remove the user information from transactions if they are the creator only', async () => {
+    let isError = false;
+    try {
+      const groupToRemoveMember = await createGroup(
+        {
+          name: 'Group to remove member',
+          description: 'This is a group to remove member',
+        },
+        users['ian'].firebaseToken
+      );
+      groups.push(groupToRemoveMember.data);
+
+      await addMembers(
+        groupToRemoveMember.data.id,
+        {
+          memberIds: [
+            users['david'].firebaseUser.uid,
+            users['oscar'].firebaseUser.uid,
+          ],
+        },
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToRemoveMember.data.id,
+        users['david'].firebaseUser.uid,
+        'Joined',
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToRemoveMember.data.id,
+        users['oscar'].firebaseUser.uid,
+        'Joined',
+        users['oscar'].firebaseToken
+      );
+
+      await createTransaction(
+        {
+          amount: 120,
+          groupId: groupToRemoveMember.data.id,
+          payerId: users['ian'].firebaseUser.uid,
+          transactionDetails: [
+            { amount: 70, recipientId: users['ian'].firebaseUser.uid },
+            { amount: 50, recipientId: users['oscar'].firebaseUser.uid },
+          ],
+        },
+        users['david'].firebaseToken
+      );
+
+      await removeMember(
+        groupToRemoveMember.data.id,
+        users['david'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+
+      const groupAfterRemoving = await getGroup(
+        groupToRemoveMember.data.id,
+        users['ian'].firebaseToken
+      );
+
+      const [transaction] = groupAfterRemoving.data.transactions;
+
+      expect(transaction.createdBy).toBeNull();
+      expect(transaction.createdById).toBeNull();
+      expect(transaction.payerId).toBe(users['ian'].firebaseUser.uid);
+      expect(transaction.payer).toBeDefined();
+      expect(transaction.transactionDetails?.length).toBe(2);
+    } catch (e) {
+      isError = true;
+      console.error('Error removing member from group', e);
+    }
+    expect(isError).toBe(false);
+  });
 });
+
+/* Add tests that handle a case where a user deletes their account
+ * 1. group rights should be transferred to another user
+ * 2. user information should be removed from all transactions without deleting transactions
+ * 3. records should be deleted from all groups without deleting groups
+ */
 
 afterAll(async () => {
   try {

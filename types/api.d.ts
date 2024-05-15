@@ -96,7 +96,7 @@ export type CreateTransactionRequestBody = {
   payerId: string;
   amount: number;
   groupId: int;
-  description: string;
+  description?: string;
   transactionDetails: CreateTransactionTransactionDetail[];
 };
 
