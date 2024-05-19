@@ -24,6 +24,7 @@ import {
   leaveGroup,
   promoteMemberToAdmin,
   removeMember,
+  transferGroupOwnership,
   updateGroup,
 } from '../../../utils/grouphelpers';
 import { createTransaction } from '../../../utils/transactionhelpers';
@@ -6180,6 +6181,432 @@ describe('Promoting members to admins', () => {
       expect((e as AxiosError).response?.data).toBe(
         'You must be an admin to promote a member to admin'
       );
+    }
+    expect(isError).toBe(true);
+  });
+});
+
+describe('transferring ownership of a group', () => {
+  it('should return a 200 status code on a successful transfer', async () => {
+    let isError = false;
+    try {
+      const groupToTransfer = await createGroup(
+        {
+          name: 'Group to transfer ownership',
+          description: 'This is a group to transfer ownership',
+        },
+        users['david'].firebaseToken
+      );
+      groups.push(groupToTransfer.data);
+
+      await addMembers(
+        groupToTransfer.data.id,
+        { memberIds: [users['ian'].firebaseUser.uid] },
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToTransfer.data.id,
+        users['ian'].firebaseUser.uid,
+        'Joined',
+        users['ian'].firebaseToken
+      );
+
+      const response = await transferGroupOwnership(
+        groupToTransfer.data.id,
+        users['ian'].firebaseUser.uid,
+        users['david'].firebaseToken
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.data).toBe('Ownership transferred');
+    } catch (e) {
+      isError = true;
+      console.error(
+        'Error transferring group ownership',
+        (e as AxiosError).response?.data
+      );
+    }
+    expect(isError).toBe(false);
+  });
+  it('should have new owner listed on properties', async () => {
+    let isError = false;
+    try {
+      const groupToTransfer = await createGroup(
+        {
+          name: 'Group to transfer ownership',
+          description: 'This is a group to transfer ownership',
+        },
+        users['david'].firebaseToken
+      );
+      groups.push(groupToTransfer.data);
+
+      await addMembers(
+        groupToTransfer.data.id,
+        { memberIds: [users['ian'].firebaseUser.uid] },
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToTransfer.data.id,
+        users['ian'].firebaseUser.uid,
+        'Joined',
+        users['ian'].firebaseToken
+      );
+
+      await transferGroupOwnership(
+        groupToTransfer.data.id,
+        users['ian'].firebaseUser.uid,
+        users['david'].firebaseToken
+      );
+
+      const response = await getGroup(
+        groupToTransfer.data.id,
+        users['david'].firebaseToken
+      );
+      expect(response.data.createdById).toBe(users['ian'].firebaseUser.uid);
+      const groupMembers = response.data.groupMembers;
+      const owner = groupMembers.find(
+        (gm) => gm.memberId === users['ian'].firebaseUser.uid
+      );
+
+      expect(owner?.isAdmin).toBe(true);
+      expect(owner?.memberId).toBe(users['ian'].firebaseUser.uid);
+      expect(owner?.memberId).toBe(response.data.createdById);
+    } catch (e) {
+      isError = true;
+      console.error(
+        'Error transferring group ownership',
+        (e as AxiosError).response?.data
+      );
+    }
+    expect(isError).toBe(false);
+  });
+
+  it('should remove ownership of the previous owner', async () => {
+    let isError = false;
+    try {
+      const groupToTransfer = await createGroup(
+        {
+          name: 'Group to transfer ownership',
+          description: 'This is a group to transfer ownership',
+        },
+        users['david'].firebaseToken
+      );
+      groups.push(groupToTransfer.data);
+
+      await addMembers(
+        groupToTransfer.data.id,
+        { memberIds: [users['ian'].firebaseUser.uid] },
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToTransfer.data.id,
+        users['ian'].firebaseUser.uid,
+        'Joined',
+        users['ian'].firebaseToken
+      );
+
+      await transferGroupOwnership(
+        groupToTransfer.data.id,
+        users['ian'].firebaseUser.uid,
+        users['david'].firebaseToken
+      );
+
+      const response = await getGroup(
+        groupToTransfer.data.id,
+        users['david'].firebaseToken
+      );
+      const groupMembers = response.data.groupMembers;
+      const owner = groupMembers.find(
+        (gm) => gm.memberId === users['ian'].firebaseUser.uid
+      );
+
+      expect(owner?.isAdmin).toBe(true);
+      expect(owner?.memberId).toBe(users['ian'].firebaseUser.uid);
+      expect(owner?.memberId).toBe(response.data.createdById);
+    } catch (e) {
+      isError = true;
+      console.error(
+        'Error transferring group ownership',
+        (e as AxiosError).response?.data
+      );
+    }
+    expect(isError).toBe(false);
+  });
+
+  it('should not allow anyone that is not the creator to transfer ownership (admin)', async () => {
+    let isError = false;
+    try {
+      const groupToTransfer = await createGroup(
+        {
+          name: 'Group to transfer ownership',
+          description: 'This is a group to transfer ownership',
+        },
+        users['david'].firebaseToken
+      );
+      groups.push(groupToTransfer.data);
+
+      await addMembers(
+        groupToTransfer.data.id,
+        { memberIds: [users['ian'].firebaseUser.uid] },
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToTransfer.data.id,
+        users['ian'].firebaseUser.uid,
+        'Joined',
+        users['ian'].firebaseToken
+      );
+
+      await promoteMemberToAdmin(
+        groupToTransfer.data.id,
+        users['ian'].firebaseUser.uid,
+        users['david'].firebaseToken
+      );
+
+      await transferGroupOwnership(
+        groupToTransfer.data.id,
+        users['ian'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(403);
+      expect((e as AxiosError).response?.data).toBe(
+        'You must be the creator of the group to transfer ownership'
+      );
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should not allow anyone that is not the creator to transfer ownership (member)', async () => {
+    let isError = false;
+    try {
+      const groupToTransfer = await createGroup(
+        {
+          name: 'Group to transfer ownership',
+          description: 'This is a group to transfer ownership',
+        },
+        users['david'].firebaseToken
+      );
+      groups.push(groupToTransfer.data);
+
+      await addMembers(
+        groupToTransfer.data.id,
+        { memberIds: [users['ian'].firebaseUser.uid] },
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToTransfer.data.id,
+        users['ian'].firebaseUser.uid,
+        'Joined',
+        users['ian'].firebaseToken
+      );
+
+      await transferGroupOwnership(
+        groupToTransfer.data.id,
+        users['ian'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(403);
+      expect((e as AxiosError).response?.data).toBe(
+        'You must be the creator of the group to transfer ownership'
+      );
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should not allow a user to transfer ownership to themselves', async () => {
+    let isError = false;
+    try {
+      const groupToTransfer = await createGroup(
+        {
+          name: 'Group to transfer ownership',
+          description: 'This is a group to transfer ownership',
+        },
+        users['david'].firebaseToken
+      );
+      groups.push(groupToTransfer.data);
+
+      await transferGroupOwnership(
+        groupToTransfer.data.id,
+        users['david'].firebaseUser.uid,
+        users['david'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(403);
+      expect((e as AxiosError).response?.data).toBe(
+        'User is already the owner of the group'
+      );
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should not allow a user to transfer ownership to a user that is not in the group', async () => {
+    let isError = false;
+    try {
+      const groupToTransfer = await createGroup(
+        {
+          name: 'Group to transfer ownership',
+          description: 'This is a group to transfer ownership',
+        },
+        users['david'].firebaseToken
+      );
+      groups.push(groupToTransfer.data);
+
+      await transferGroupOwnership(
+        groupToTransfer.data.id,
+        'invalid-user-id',
+        users['david'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(404);
+      expect((e as AxiosError).response?.data).toBe('User is not in the group');
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should not allow a user to transfer ownership to a user that is not joined (invited)', async () => {
+    let isError = false;
+    try {
+      const groupToTransfer = await createGroup(
+        {
+          name: 'Group to transfer ownership',
+          description: 'This is a group to transfer ownership',
+        },
+        users['david'].firebaseToken
+      );
+      groups.push(groupToTransfer.data);
+
+      await addMembers(
+        groupToTransfer.data.id,
+        { memberIds: [users['ian'].firebaseUser.uid] },
+        users['david'].firebaseToken
+      );
+
+      await transferGroupOwnership(
+        groupToTransfer.data.id,
+        users['ian'].firebaseUser.uid,
+        users['david'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(404);
+      expect((e as AxiosError).response?.data).toBe('User is not in the group');
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should not allow a user to transfer ownership to a user that is not joined (banned)', async () => {
+    let isError = false;
+    try {
+      const groupToTransfer = await createGroup(
+        {
+          name: 'Group to transfer ownership',
+          description: 'This is a group to transfer ownership',
+        },
+        users['david'].firebaseToken
+      );
+      groups.push(groupToTransfer.data);
+
+      await addMembers(
+        groupToTransfer.data.id,
+        { memberIds: [users['ian'].firebaseUser.uid] },
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToTransfer.data.id,
+        users['ian'].firebaseUser.uid,
+        'Joined',
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToTransfer.data.id,
+        users['ian'].firebaseUser.uid,
+        'Banned',
+        users['david'].firebaseToken
+      );
+
+      await transferGroupOwnership(
+        groupToTransfer.data.id,
+        users['ian'].firebaseUser.uid,
+        users['david'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(404);
+      expect((e as AxiosError).response?.data).toBe('User is not in the group');
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should not allow a user to transfer ownership to a user that is not joined (kicked)', async () => {
+    let isError = false;
+    try {
+      const groupToTransfer = await createGroup(
+        {
+          name: 'Group to transfer ownership',
+          description: 'This is a group to transfer ownership',
+        },
+        users['david'].firebaseToken
+      );
+      groups.push(groupToTransfer.data);
+
+      await addMembers(
+        groupToTransfer.data.id,
+        { memberIds: [users['ian'].firebaseUser.uid] },
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToTransfer.data.id,
+        users['ian'].firebaseUser.uid,
+        'Joined',
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToTransfer.data.id,
+        users['ian'].firebaseUser.uid,
+        'Kicked',
+        users['david'].firebaseToken
+      );
+
+      await transferGroupOwnership(
+        groupToTransfer.data.id,
+        users['ian'].firebaseUser.uid,
+        users['david'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(404);
+      expect((e as AxiosError).response?.data).toBe('User is not in the group');
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should return not found if the group does not exist', async () => {
+    let isError = false;
+    try {
+      await transferGroupOwnership(
+        999999,
+        users['david'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(404);
+      expect((e as AxiosError).response?.data).toBe('Group not found');
     }
     expect(isError).toBe(true);
   });

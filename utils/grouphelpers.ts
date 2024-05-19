@@ -187,3 +187,21 @@ export async function removeMember(
   );
   return response;
 }
+
+export async function transferGroupOwnership(
+  groupId: number,
+  memberId: string,
+  token: string
+) {
+  const response = await axios.put<string>(
+    `http://localhost:5217/api/v1/Groups/${groupId}/transferownership/${memberId}`,
+    {},
+    {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+  return response;
+}
