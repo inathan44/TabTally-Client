@@ -120,6 +120,24 @@ export async function promoteMemberToAdmin(
   return response;
 }
 
+export async function demoteAdminToMember(
+  groupId: number,
+  memberId: string,
+  token: string
+) {
+  const response = await axios.put<string>(
+    `http://localhost:5217/api/v1/Groups/${groupId}/demote/${memberId}`,
+    {},
+    {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+  return response;
+}
+
 export async function deleteGroup(groupId: number, token: string) {
   const response = await axios.delete<string>(
     `http://localhost:5217/api/v1/Groups/${groupId}/delete`,

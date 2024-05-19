@@ -1,5 +1,9 @@
 import axios, { AxiosError } from 'axios';
-import { CreatedUser, GetGroupResponse } from '../../../types/api';
+import {
+  CreatedUser,
+  GetGroupResponse,
+  GroupMemberStatus,
+} from '../../../types/api';
 import {
   createUserInDbAndFirebase,
   deleteUserFromDbAndFirebase,
@@ -13,6 +17,7 @@ import {
   changeStatus,
   createGroup,
   deleteGroup,
+  demoteAdminToMember,
   getAllGroupMembers,
   getAllGroups,
   getGroup,
@@ -2345,6 +2350,57 @@ describe('adding members to groups', () => {
     }
     expect(isError).toBe(true);
   });
+
+  it('should allow joined members to invite others to the group', async () => {
+    let isError = false;
+    try {
+      const groupToAddMember = await createGroup(
+        {
+          name: 'Group to add member',
+          description: 'This is a group to add member',
+        },
+        users['ian'].firebaseToken
+      );
+
+      groups.push(groupToAddMember.data);
+
+      await addMembers(
+        groupToAddMember.data.id,
+        { memberIds: [users['david'].firebaseUser.uid] },
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToAddMember.data.id,
+        users['david'].firebaseUser.uid,
+        'Joined',
+        users['david'].firebaseToken
+      );
+
+      const currentGroupMembers = await getAllGroupMembers();
+
+      const memberIds = [
+        users['oscar'].firebaseUser.uid,
+        users['gabe'].firebaseUser.uid,
+      ];
+
+      await addMembers(
+        groupToAddMember.data.id,
+        { memberIds },
+        users['david'].firebaseToken
+      );
+
+      const groupMembersAfterInvite = await getAllGroupMembers();
+
+      expect(groupMembersAfterInvite.data.length).toBe(
+        currentGroupMembers.data.length + memberIds.length
+      );
+    } catch (e) {
+      isError = true;
+      console.error('Error adding member to group', e);
+    }
+    expect(isError).toBe(false);
+  });
 });
 
 describe('leaving a group', () => {
@@ -3015,6 +3071,76 @@ describe('leaving a group', () => {
     } catch (e) {
       isError = true;
       console.error('Error leaving group', (e as AxiosError).response?.data);
+    }
+    expect(isError).toBe(false);
+  });
+
+  it('should remove admin status if user is an admin and leaves the group', async () => {
+    let isError = false;
+    try {
+      const groupToLeave = await createGroup(
+        { name: 'Group to leave', description: 'This is a group to leave' },
+        users['ian'].firebaseToken
+      );
+
+      groups.push(groupToLeave.data);
+
+      await addMembers(
+        groupToLeave.data.id,
+        {
+          memberIds: [
+            users['david'].firebaseUser.uid,
+            users['oscar'].firebaseUser.uid,
+          ],
+        },
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToLeave.data.id,
+        users['david'].firebaseUser.uid,
+        'Joined',
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToLeave.data.id,
+        users['oscar'].firebaseUser.uid,
+        'Joined',
+        users['oscar'].firebaseToken
+      );
+
+      await promoteMemberToAdmin(
+        groupToLeave.data.id,
+        users['david'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+
+      const responseBeforeLeaving = await getAllGroupMembers();
+
+      const adminBeforeLeaving = responseBeforeLeaving.data.find(
+        (gm) =>
+          gm.groupId === groupToLeave.data.id &&
+          gm.memberId === users['david'].firebaseUser.uid
+      );
+
+      expect(adminBeforeLeaving?.isAdmin).toBe(true);
+
+      await leaveGroup(groupToLeave.data.id, users['david'].firebaseToken);
+
+      const response = await getAllGroupMembers();
+
+      const adminAfterLeaving = response.data.find(
+        (member) =>
+          member.groupId === groupToLeave.data.id &&
+          member.memberId === users['david'].firebaseUser.uid
+      );
+
+      expect(adminAfterLeaving?.status).toBe('Left');
+      expect(adminAfterLeaving?.isAdmin).toBe(false);
+    } catch (e) {
+      isError = true;
+      console.error('Error leaving group', e);
     }
     expect(isError).toBe(false);
   });
@@ -4220,6 +4346,1845 @@ describe('Removing a group member', () => {
   });
 });
 
+describe('change status of a group member', () => {
+  it('should return a 200 status code on a successful change', async () => {
+    let isError = false;
+    try {
+      const groupToChangeStatus = await createGroup(
+        {
+          name: 'Group to change status',
+          description: 'This is a group to change status',
+        },
+        users['ian'].firebaseToken
+      );
+      groups.push(groupToChangeStatus.data);
+
+      await addMembers(
+        groupToChangeStatus.data.id,
+        { memberIds: [users['david'].firebaseUser.uid] },
+        users['ian'].firebaseToken
+      );
+
+      const response = await changeStatus(
+        groupToChangeStatus.data.id,
+        users['david'].firebaseUser.uid,
+        'Joined',
+        users['david'].firebaseToken
+      );
+
+      expect(response.status).toBe(200);
+    } catch (e) {
+      isError = true;
+      console.error('Error creating group', (e as AxiosError).response?.data);
+    }
+    expect(isError).toBe(false);
+  });
+
+  it('should return a 404 status code if the group does not exist', async () => {
+    let isError = false;
+    try {
+      await changeStatus(
+        999999,
+        users['david'].firebaseUser.uid,
+        'Joined',
+        users['ian'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(404);
+      expect((e as AxiosError).response?.data).toBe('Group not found');
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should return a 404 status code if the request member is not in the group', async () => {
+    let isError = false;
+    try {
+      const groupToChangeStatus = await createGroup(
+        {
+          name: 'Group to change status',
+          description: 'This is a group to change status',
+        },
+        users['ian'].firebaseToken
+      );
+      groups.push(groupToChangeStatus.data);
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        'invalid-user-id',
+        'Banned',
+        users['ian'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(404);
+      expect((e as AxiosError).response?.data).toBe('User not found in group');
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should return a 404 if the member to change  is not in the group', async () => {
+    let isError = false;
+    try {
+      const groupToChangeStatus = await createGroup(
+        {
+          name: 'Group to change status',
+          description: 'This is a group to change status',
+        },
+        users['ian'].firebaseToken
+      );
+      groups.push(groupToChangeStatus.data);
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['david'].firebaseUser.uid,
+        'Banned',
+        users['ian'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(404);
+      expect((e as AxiosError).response?.data).toBe('User not found in group');
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should return a 400 status code if the status is invalid', async () => {
+    let isError = false;
+    try {
+      const groupToChangeStatus = await createGroup(
+        {
+          name: 'Group to change status',
+          description: 'This is a group to change status',
+        },
+        users['ian'].firebaseToken
+      );
+      groups.push(groupToChangeStatus.data);
+
+      await addMembers(
+        groupToChangeStatus.data.id,
+        { memberIds: [users['david'].firebaseUser.uid] },
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['david'].firebaseUser.uid,
+        'Invalid' as GroupMemberStatus,
+        users['ian'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(400);
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should not allow a user who is banned change another members status', async () => {
+    let isError = false;
+    try {
+      const groupToChangeStatus = await createGroup(
+        {
+          name: 'Group to change status',
+          description: 'This is a group to change status',
+        },
+        users['ian'].firebaseToken
+      );
+      groups.push(groupToChangeStatus.data);
+
+      await addMembers(
+        groupToChangeStatus.data.id,
+        {
+          memberIds: [
+            users['david'].firebaseUser.uid,
+            users['oscar'].firebaseUser.uid,
+          ],
+        },
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['david'].firebaseUser.uid,
+        'Joined',
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['oscar'].firebaseUser.uid,
+        'Joined',
+        users['oscar'].firebaseToken
+      );
+
+      await promoteMemberToAdmin(
+        groupToChangeStatus.data.id,
+        users['david'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['david'].firebaseUser.uid,
+        'Banned',
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['oscar'].firebaseUser.uid,
+        'Banned',
+        users['david'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(403);
+      expect((e as AxiosError).response?.data).toBe(
+        'You are banned from the group'
+      );
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should not allow a user who is invited to change another members status', async () => {
+    let isError = false;
+    try {
+      const groupToChangeStatus = await createGroup(
+        {
+          name: 'Group to change status',
+          description: 'This is a group to change status',
+        },
+        users['ian'].firebaseToken
+      );
+      groups.push(groupToChangeStatus.data);
+
+      await addMembers(
+        groupToChangeStatus.data.id,
+        {
+          memberIds: [
+            users['david'].firebaseUser.uid,
+            users['oscar'].firebaseUser.uid,
+          ],
+        },
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['oscar'].firebaseUser.uid,
+        'Banned',
+        users['david'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(403);
+      expect((e as AxiosError).response?.data).toBe(
+        'You can not change the status of another user'
+      );
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should allow a user who is invited to accept the invite', async () => {
+    let isError = false;
+    try {
+      const groupToChangeStatus = await createGroup(
+        {
+          name: 'Group to change status',
+          description: 'This is a group to change status',
+        },
+        users['ian'].firebaseToken
+      );
+      groups.push(groupToChangeStatus.data);
+
+      await addMembers(
+        groupToChangeStatus.data.id,
+        {
+          memberIds: [
+            users['david'].firebaseUser.uid,
+            users['oscar'].firebaseUser.uid,
+          ],
+        },
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['david'].firebaseUser.uid,
+        'Joined',
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['oscar'].firebaseUser.uid,
+        'Joined',
+        users['oscar'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      console.error(
+        'Error changing status of group member',
+        (e as AxiosError).response?.data
+      );
+    }
+    expect(isError).toBe(false);
+  });
+
+  it('should allow a user who is invited to decline the invite', async () => {
+    let isError = false;
+    try {
+      const groupToChangeStatus = await createGroup(
+        {
+          name: 'Group to change status',
+          description: 'This is a group to change status',
+        },
+        users['ian'].firebaseToken
+      );
+      groups.push(groupToChangeStatus.data);
+
+      await addMembers(
+        groupToChangeStatus.data.id,
+        {
+          memberIds: [
+            users['david'].firebaseUser.uid,
+            users['oscar'].firebaseUser.uid,
+          ],
+        },
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['oscar'].firebaseUser.uid,
+        'Declined',
+        users['oscar'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['david'].firebaseUser.uid,
+        'Declined',
+        users['david'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      console.error('Error changing status of group member', e);
+    }
+    expect(isError).toBe(false);
+  });
+
+  it('should not allow an invited user to change their status to anything other than declined or joined', async () => {
+    let numberOfErrors = 0;
+    let isError = false;
+    try {
+      const groupToChangeStatus = await createGroup(
+        {
+          name: 'Group to change status',
+          description: 'This is a group to change status',
+        },
+        users['ian'].firebaseToken
+      );
+      groups.push(groupToChangeStatus.data);
+
+      await addMembers(
+        groupToChangeStatus.data.id,
+        {
+          memberIds: [users['oscar'].firebaseUser.uid],
+        },
+        users['ian'].firebaseToken
+      );
+
+      try {
+        await changeStatus(
+          groupToChangeStatus.data.id,
+          users['oscar'].firebaseUser.uid,
+          'Banned',
+          users['oscar'].firebaseToken
+        );
+      } catch (e) {
+        numberOfErrors++;
+      }
+      try {
+        await changeStatus(
+          groupToChangeStatus.data.id,
+          users['oscar'].firebaseUser.uid,
+          'Kicked',
+          users['oscar'].firebaseToken
+        );
+      } catch (e) {
+        numberOfErrors++;
+      }
+      try {
+        await changeStatus(
+          groupToChangeStatus.data.id,
+          users['oscar'].firebaseUser.uid,
+          'Left',
+          users['oscar'].firebaseToken
+        );
+      } catch (e) {
+        numberOfErrors++;
+      }
+      try {
+        await changeStatus(
+          groupToChangeStatus.data.id,
+          users['oscar'].firebaseUser.uid,
+          'Invited',
+          users['oscar'].firebaseToken
+        );
+      } catch (e) {
+        numberOfErrors++;
+      }
+      // This call does not increment counter, just causes failure
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['oscar'].firebaseUser.uid,
+        'Invited',
+        users['oscar'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(403);
+      expect((e as AxiosError).response?.data).toBe(
+        'You can only accept or decline an invite'
+      );
+    }
+    expect(numberOfErrors).toBe(4);
+    expect(isError).toBe(true);
+  });
+
+  it('should not allow an invited user to accept another invited users invite', async () => {
+    let isError = false;
+    try {
+      const groupToChangeStatus = await createGroup(
+        {
+          name: 'Group to change status',
+          description: 'This is a group to change status',
+        },
+        users['ian'].firebaseToken
+      );
+      groups.push(groupToChangeStatus.data);
+
+      await addMembers(
+        groupToChangeStatus.data.id,
+        {
+          memberIds: [
+            users['oscar'].firebaseUser.uid,
+            users['david'].firebaseUser.uid,
+          ],
+        },
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['oscar'].firebaseUser.uid,
+        'Joined',
+        users['david'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(403);
+      expect((e as AxiosError).response?.data).toBe(
+        'You can not change the status of another user'
+      );
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should only allow admins to change the status of other members', async () => {
+    let isError = false;
+    try {
+      const groupToChangeStatus = await createGroup(
+        {
+          name: 'Group to change status',
+          description: 'This is a group to change status',
+        },
+        users['ian'].firebaseToken
+      );
+      groups.push(groupToChangeStatus.data);
+
+      await addMembers(
+        groupToChangeStatus.data.id,
+        {
+          memberIds: [
+            users['oscar'].firebaseUser.uid,
+            users['david'].firebaseUser.uid,
+          ],
+        },
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['oscar'].firebaseUser.uid,
+        'Joined',
+        users['oscar'].firebaseToken
+      );
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['david'].firebaseUser.uid,
+        'Joined',
+        users['david'].firebaseToken
+      );
+
+      await promoteMemberToAdmin(
+        groupToChangeStatus.data.id,
+        users['oscar'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['david'].firebaseUser.uid,
+        'Banned',
+        users['oscar'].firebaseToken
+      );
+
+      const groupMembersResponse = await getAllGroupMembers();
+      const bannedMember = groupMembersResponse.data.find(
+        (gm) =>
+          gm.memberId === users['david'].firebaseUser.uid &&
+          gm.groupId === groupToChangeStatus.data.id
+      );
+
+      expect(bannedMember).toBeDefined();
+      expect(bannedMember?.status).toBe('Banned');
+    } catch (e) {
+      isError = true;
+      console.log((e as AxiosError).response?.data);
+    }
+    expect(isError).toBe(false);
+  });
+
+  it('should not let an admin change the status of another admin (Banning)', async () => {
+    let isError = false;
+    try {
+      const groupToChangeStatus = await createGroup(
+        {
+          name: 'Group to change status',
+          description: 'This is a group to change status',
+        },
+        users['ian'].firebaseToken
+      );
+      groups.push(groupToChangeStatus.data);
+
+      await addMembers(
+        groupToChangeStatus.data.id,
+        {
+          memberIds: [
+            users['oscar'].firebaseUser.uid,
+            users['david'].firebaseUser.uid,
+          ],
+        },
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['oscar'].firebaseUser.uid,
+        'Joined',
+        users['oscar'].firebaseToken
+      );
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['david'].firebaseUser.uid,
+        'Joined',
+        users['david'].firebaseToken
+      );
+
+      await promoteMemberToAdmin(
+        groupToChangeStatus.data.id,
+        users['oscar'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+
+      await promoteMemberToAdmin(
+        groupToChangeStatus.data.id,
+        users['david'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['david'].firebaseUser.uid,
+        'Banned',
+        users['oscar'].firebaseToken
+      );
+
+      const groupMembersResponse = await getAllGroupMembers();
+      const bannedMember = groupMembersResponse.data.find(
+        (gm) =>
+          gm.memberId === users['david'].firebaseUser.uid &&
+          gm.groupId === groupToChangeStatus.data.id
+      );
+      expect(bannedMember).toBeDefined();
+      expect(bannedMember?.status).toBe('Banned');
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(403);
+      expect((e as AxiosError).response?.data).toBe(
+        'You cannot change the status of an admin'
+      );
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should not let an admin change the status of another admin (Kicking)', async () => {
+    let isError = false;
+    try {
+      const groupToChangeStatus = await createGroup(
+        {
+          name: 'Group to change status',
+          description: 'This is a group to change status',
+        },
+        users['ian'].firebaseToken
+      );
+      groups.push(groupToChangeStatus.data);
+
+      await addMembers(
+        groupToChangeStatus.data.id,
+        {
+          memberIds: [
+            users['oscar'].firebaseUser.uid,
+            users['david'].firebaseUser.uid,
+          ],
+        },
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['oscar'].firebaseUser.uid,
+        'Joined',
+        users['oscar'].firebaseToken
+      );
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['david'].firebaseUser.uid,
+        'Joined',
+        users['david'].firebaseToken
+      );
+
+      await promoteMemberToAdmin(
+        groupToChangeStatus.data.id,
+        users['oscar'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+
+      await promoteMemberToAdmin(
+        groupToChangeStatus.data.id,
+        users['david'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['david'].firebaseUser.uid,
+        'Kicked',
+        users['oscar'].firebaseToken
+      );
+
+      const groupMembersResponse = await getAllGroupMembers();
+      const kickedMember = groupMembersResponse.data.find(
+        (gm) =>
+          gm.memberId === users['david'].firebaseUser.uid &&
+          gm.groupId === groupToChangeStatus.data.id
+      );
+      expect(kickedMember).toBeDefined();
+      expect(kickedMember?.status).toBe('Kicked');
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(403);
+      expect((e as AxiosError).response?.data).toBe(
+        'You cannot change the status of an admin'
+      );
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should not allow a user to change their own status', async () => {
+    let isError = false;
+    try {
+      const groupToChangeStatus = await createGroup(
+        {
+          name: 'Group to change status',
+          description: 'This is a group to change status',
+        },
+        users['david'].firebaseToken
+      );
+      groups.push(groupToChangeStatus.data);
+
+      await addMembers(
+        groupToChangeStatus.data.id,
+        { memberIds: [users['ian'].firebaseUser.uid] },
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['ian'].firebaseUser.uid,
+        'Joined',
+        users['ian'].firebaseToken
+      );
+
+      await promoteMemberToAdmin(
+        groupToChangeStatus.data.id,
+        users['ian'].firebaseUser.uid,
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['ian'].firebaseUser.uid,
+        'Banned',
+        users['ian'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(403);
+      expect((e as AxiosError).response?.data).toBe(
+        'You cannot change your own status'
+      );
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should allow a user who is banned to be unbanned and set to kicked', async () => {
+    let isError = false;
+    try {
+      const groupToChangeStatus = await createGroup(
+        {
+          name: 'Group to change status',
+          description: 'This is a group to change status',
+        },
+        users['david'].firebaseToken
+      );
+      groups.push(groupToChangeStatus.data);
+
+      await addMembers(
+        groupToChangeStatus.data.id,
+        { memberIds: [users['ian'].firebaseUser.uid] },
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['ian'].firebaseUser.uid,
+        'Joined',
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['ian'].firebaseUser.uid,
+        'Banned',
+        users['david'].firebaseToken
+      );
+
+      const currentGroupMembersResponse = await getAllGroupMembers();
+      const bannedMember = currentGroupMembersResponse.data.find(
+        (gm) =>
+          gm.memberId === users['ian'].firebaseUser.uid &&
+          gm.groupId === groupToChangeStatus.data.id
+      );
+      expect(bannedMember).toBeDefined();
+      expect(bannedMember?.status).toBe('Banned');
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['ian'].firebaseUser.uid,
+        'Kicked',
+        users['david'].firebaseToken
+      );
+
+      const groupMembersResponse = await getAllGroupMembers();
+      const kickedMember = groupMembersResponse.data.find(
+        (gm) =>
+          gm.memberId === users['ian'].firebaseUser.uid &&
+          gm.groupId === groupToChangeStatus.data.id
+      );
+
+      expect(kickedMember).toBeDefined();
+      expect(kickedMember?.status).toBe('Kicked');
+    } catch (e) {
+      isError = true;
+      console.error(
+        'Error changing status of group member',
+        (e as AxiosError).response?.data
+      );
+    }
+    expect(isError).toBe(false);
+  });
+
+  it('should not allow someone who is not an admin to change the status of another member', async () => {
+    let isError = false;
+    try {
+      const groupToChangeStatus = await createGroup(
+        {
+          name: 'Group to change status',
+          description: 'This is a group to change status',
+        },
+        users['david'].firebaseToken
+      );
+      groups.push(groupToChangeStatus.data);
+
+      await addMembers(
+        groupToChangeStatus.data.id,
+        {
+          memberIds: [
+            users['ian'].firebaseUser.uid,
+            users['oscar'].firebaseUser.uid,
+          ],
+        },
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['ian'].firebaseUser.uid,
+        'Joined',
+        users['ian'].firebaseToken
+      );
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['oscar'].firebaseUser.uid,
+        'Joined',
+        users['oscar'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['oscar'].firebaseUser.uid,
+        'Banned',
+        users['ian'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(403);
+      expect((e as AxiosError).response?.data).toBe(
+        'You must be an admin of the group to update it'
+      );
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should not allow a user who is not joined to have their status changed', async () => {
+    let isError = false;
+    try {
+      const groupToChangeStatus = await createGroup(
+        {
+          name: 'Group to change status',
+          description: 'This is a group to change status',
+        },
+        users['david'].firebaseToken
+      );
+      groups.push(groupToChangeStatus.data);
+
+      await addMembers(
+        groupToChangeStatus.data.id,
+        { memberIds: [users['ian'].firebaseUser.uid] },
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['ian'].firebaseUser.uid,
+        'Banned',
+        users['david'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(403);
+      expect((e as AxiosError).response?.data).toBe(
+        'You cannot change the status of a user who is not in the group'
+      );
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('admins can not change the status of the creator of the group', async () => {
+    let isError = false;
+    try {
+      const groupToChangeStatus = await createGroup(
+        {
+          name: 'Group to change status',
+          description: 'This is a group to change status',
+        },
+        users['david'].firebaseToken
+      );
+      groups.push(groupToChangeStatus.data);
+
+      await addMembers(
+        groupToChangeStatus.data.id,
+        { memberIds: [users['ian'].firebaseUser.uid] },
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['ian'].firebaseUser.uid,
+        'Joined',
+        users['ian'].firebaseToken
+      );
+
+      await promoteMemberToAdmin(
+        groupToChangeStatus.data.id,
+        users['ian'].firebaseUser.uid,
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['david'].firebaseUser.uid,
+        'Banned',
+        users['ian'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(403);
+      expect((e as AxiosError).response?.data).toBe(
+        'You cannot change the status of the creator of the group'
+      );
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should allow an admin to revoke an invite to a group', async () => {
+    let isError = false;
+    try {
+      const groupToChangeStatus = await createGroup(
+        {
+          name: 'Group to revoke invite',
+          description: 'This is a group to revoke invite',
+        },
+        users['david'].firebaseToken
+      );
+      groups.push(groupToChangeStatus.data);
+
+      await addMembers(
+        groupToChangeStatus.data.id,
+        { memberIds: [users['ian'].firebaseUser.uid] },
+        users['david'].firebaseToken
+      );
+
+      const currentGroupMembersResponse = await getAllGroupMembers();
+      const invitedMember = currentGroupMembersResponse.data.find(
+        (gm) =>
+          gm.memberId === users['ian'].firebaseUser.uid &&
+          gm.groupId === groupToChangeStatus.data.id
+      );
+      expect(invitedMember).toBeDefined();
+      expect(invitedMember?.status).toBe('Invited');
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['ian'].firebaseUser.uid,
+        'Kicked',
+        users['david'].firebaseToken
+      );
+
+      const groupMembersResponse = await getAllGroupMembers();
+      const kickedMember = groupMembersResponse.data.find(
+        (gm) =>
+          gm.memberId === users['ian'].firebaseUser.uid &&
+          gm.groupId === groupToChangeStatus.data.id
+      );
+      expect(kickedMember).toBeDefined();
+      expect(kickedMember?.status).toBe('Kicked');
+    } catch (e) {
+      isError = true;
+      console.error(
+        'Error changing status of group member',
+        (e as AxiosError).response?.data
+      );
+    }
+    expect(isError).toBe(false);
+  });
+
+  it('should allow a non-admin to rescind an invite to a group IF they invited the user', async () => {
+    let isError = false;
+    try {
+      const groupToChangeStatus = await createGroup(
+        {
+          name: 'Group to rescind invite',
+          description: 'This is a group to rescind invite',
+        },
+        users['david'].firebaseToken
+      );
+      groups.push(groupToChangeStatus.data);
+
+      await addMembers(
+        groupToChangeStatus.data.id,
+        { memberIds: [users['ian'].firebaseUser.uid] },
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['ian'].firebaseUser.uid,
+        'Joined',
+        users['ian'].firebaseToken
+      );
+
+      await addMembers(
+        groupToChangeStatus.data.id,
+        { memberIds: [users['oscar'].firebaseUser.uid] },
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['oscar'].firebaseUser.uid,
+        'Kicked',
+        users['ian'].firebaseToken
+      );
+
+      const groupMembersResponse = await getAllGroupMembers();
+      const invitingMember = groupMembersResponse.data.find(
+        (gm) =>
+          gm.groupId === groupToChangeStatus.data.id &&
+          gm.invitedById === users['ian'].firebaseUser.uid
+      );
+      expect(invitingMember).toBeDefined();
+      expect(invitingMember?.status).toBe('Kicked');
+
+      const kickedMember = groupMembersResponse.data.find(
+        (gm) =>
+          gm.memberId === users['oscar'].firebaseUser.uid &&
+          gm.groupId === groupToChangeStatus.data.id
+      );
+      expect(kickedMember).toBeDefined();
+      expect(kickedMember?.status).toBe('Kicked');
+    } catch (e) {
+      isError = true;
+      console.error(
+        'Error changing status of group member',
+        (e as AxiosError).response?.data
+      );
+      console.log(e);
+    }
+    expect(isError).toBe(false);
+  });
+
+  it('should remove admin status if an admin is kicked from a group', async () => {
+    let isError = false;
+    try {
+      const groupToChangeStatus = await createGroup(
+        {
+          name: 'Group to remove admin status',
+          description: 'This is a group to remove admin status',
+        },
+        users['david'].firebaseToken
+      );
+      groups.push(groupToChangeStatus.data);
+
+      await addMembers(
+        groupToChangeStatus.data.id,
+        { memberIds: [users['ian'].firebaseUser.uid] },
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['ian'].firebaseUser.uid,
+        'Joined',
+        users['ian'].firebaseToken
+      );
+
+      await promoteMemberToAdmin(
+        groupToChangeStatus.data.id,
+        users['ian'].firebaseUser.uid,
+        users['david'].firebaseToken
+      );
+
+      const groupMembersResponse = await getAllGroupMembers();
+      const adminMember = groupMembersResponse.data.find(
+        (gm) =>
+          gm.memberId === users['ian'].firebaseUser.uid &&
+          gm.groupId === groupToChangeStatus.data.id
+      );
+      expect(adminMember).toBeDefined();
+      expect(adminMember?.isAdmin).toBe(true);
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['ian'].firebaseUser.uid,
+        'Kicked',
+        users['david'].firebaseToken
+      );
+
+      const groupMembersAfterKickResponse = await getAllGroupMembers();
+
+      const kickedMember = groupMembersAfterKickResponse.data.find(
+        (gm) =>
+          gm.memberId === users['ian'].firebaseUser.uid &&
+          gm.groupId === groupToChangeStatus.data.id
+      );
+
+      expect(kickedMember).toBeDefined();
+      expect(kickedMember?.isAdmin).toBe(false);
+    } catch (e) {
+      isError = true;
+      console.error(e);
+      console.error(
+        'Error changing status of group member',
+        (e as AxiosError).response?.data
+      );
+    }
+    expect(isError).toBe(false);
+  });
+  it('should remove admin status if an admin is banned from a group', async () => {
+    let isError = false;
+    try {
+      const groupToChangeStatus = await createGroup(
+        {
+          name: 'Group to remove admin status',
+          description: 'This is a group to remove admin status',
+        },
+        users['david'].firebaseToken
+      );
+      groups.push(groupToChangeStatus.data);
+
+      await addMembers(
+        groupToChangeStatus.data.id,
+        { memberIds: [users['ian'].firebaseUser.uid] },
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['ian'].firebaseUser.uid,
+        'Joined',
+        users['ian'].firebaseToken
+      );
+
+      await promoteMemberToAdmin(
+        groupToChangeStatus.data.id,
+        users['ian'].firebaseUser.uid,
+        users['david'].firebaseToken
+      );
+
+      const groupMembersResponse = await getAllGroupMembers();
+      const adminMember = groupMembersResponse.data.find(
+        (gm) =>
+          gm.memberId === users['ian'].firebaseUser.uid &&
+          gm.groupId === groupToChangeStatus.data.id
+      );
+      expect(adminMember).toBeDefined();
+      expect(adminMember?.isAdmin).toBe(true);
+
+      await changeStatus(
+        groupToChangeStatus.data.id,
+        users['ian'].firebaseUser.uid,
+        'Banned',
+        users['david'].firebaseToken
+      );
+
+      const groupMembersAfterBanResponse = await getAllGroupMembers();
+
+      const bannedMember = groupMembersAfterBanResponse.data.find(
+        (gm) =>
+          gm.memberId === users['ian'].firebaseUser.uid &&
+          gm.groupId === groupToChangeStatus.data.id
+      );
+      expect(bannedMember).toBeDefined();
+      expect(bannedMember?.isAdmin).toBe(false);
+    } catch (e) {
+      isError = true;
+      console.error(
+        'Error changing status of group member',
+        (e as AxiosError).response?.data
+      );
+    }
+    expect(isError).toBe(false);
+  });
+});
+
+describe('Demoting admins', () => {
+  it('should return a 200 status code on a successful demotion', async () => {
+    let isError = false;
+    try {
+      const groupToDemoteAdmin = await createGroup(
+        {
+          name: 'Group to demote admin',
+          description: 'This is a group to demote admin',
+        },
+        users['ian'].firebaseToken
+      );
+
+      groups.push(groupToDemoteAdmin.data);
+
+      await addMembers(
+        groupToDemoteAdmin.data.id,
+        { memberIds: [users['david'].firebaseUser.uid] },
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToDemoteAdmin.data.id,
+        users['david'].firebaseUser.uid,
+        'Joined',
+        users['david'].firebaseToken
+      );
+
+      await promoteMemberToAdmin(
+        groupToDemoteAdmin.data.id,
+        users['david'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+
+      const response = await demoteAdminToMember(
+        groupToDemoteAdmin.data.id,
+        users['david'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+      expect(response.status).toBe(200);
+      expect(response.data).toBe('Admin demoted to member');
+    } catch (e) {
+      isError = true;
+      console.error('Error creating group', (e as AxiosError).response?.data);
+    }
+    expect(isError).toBe(false);
+  });
+
+  it('should not allow a non-admin to demote an admin', async () => {
+    let isError = false;
+    try {
+      const groupToDemoteAdmin = await createGroup(
+        {
+          name: 'Group to demote admin',
+          description: 'This is a group to demote admin',
+        },
+        users['david'].firebaseToken
+      );
+
+      groups.push(groupToDemoteAdmin.data);
+
+      await addMembers(
+        groupToDemoteAdmin.data.id,
+        {
+          memberIds: [
+            users['ian'].firebaseUser.uid,
+            users['oscar'].firebaseUser.uid,
+          ],
+        },
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToDemoteAdmin.data.id,
+        users['ian'].firebaseUser.uid,
+        'Joined',
+        users['ian'].firebaseToken
+      );
+      await changeStatus(
+        groupToDemoteAdmin.data.id,
+        users['oscar'].firebaseUser.uid,
+        'Joined',
+        users['oscar'].firebaseToken
+      );
+
+      await promoteMemberToAdmin(
+        groupToDemoteAdmin.data.id,
+        users['ian'].firebaseUser.uid,
+        users['david'].firebaseToken
+      );
+
+      await demoteAdminToMember(
+        groupToDemoteAdmin.data.id,
+        users['ian'].firebaseUser.uid,
+        users['oscar'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(403);
+      expect((e as AxiosError).response?.data).toBe(
+        'You must be the creator of the group to demote an admin to member'
+      );
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should not allow an admin to demote another admin (unless they are the creator)', async () => {
+    let isError = false;
+    try {
+      const groupToDemoteAdmin = await createGroup(
+        {
+          name: 'Group to demote admin',
+          description: 'This is a group to demote admin',
+        },
+        users['ian'].firebaseToken
+      );
+      groups.push(groupToDemoteAdmin.data);
+
+      await addMembers(
+        groupToDemoteAdmin.data.id,
+        {
+          memberIds: [
+            users['david'].firebaseUser.uid,
+            users['oscar'].firebaseUser.uid,
+          ],
+        },
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToDemoteAdmin.data.id,
+        users['david'].firebaseUser.uid,
+        'Joined',
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToDemoteAdmin.data.id,
+        users['oscar'].firebaseUser.uid,
+        'Joined',
+        users['oscar'].firebaseToken
+      );
+
+      await promoteMemberToAdmin(
+        groupToDemoteAdmin.data.id,
+        users['david'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+
+      await promoteMemberToAdmin(
+        groupToDemoteAdmin.data.id,
+        users['oscar'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+
+      await demoteAdminToMember(
+        groupToDemoteAdmin.data.id,
+        users['david'].firebaseUser.uid,
+        users['oscar'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(403);
+      expect((e as AxiosError).response?.data).toBe(
+        'You must be the creator of the group to demote an admin to member'
+      );
+    }
+    expect(isError).toBe(true);
+  });
+
+  it(`should return not found if the group doesn't exist`, async () => {
+    let isError = false;
+    try {
+      await demoteAdminToMember(
+        999999,
+        users['david'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(404);
+      expect((e as AxiosError).response?.data).toBe('Group not found');
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should return not found when the user to demote is not in the group', async () => {
+    let isError = false;
+    try {
+      const groupToDemoteAdmin = await createGroup(
+        {
+          name: 'Group to demote admin',
+          description: 'This is a group to demote admin',
+        },
+        users['ian'].firebaseToken
+      );
+      groups.push(groupToDemoteAdmin.data);
+
+      await demoteAdminToMember(
+        groupToDemoteAdmin.data.id,
+        'invalid-user-id',
+        users['ian'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(404);
+      expect((e as AxiosError).response?.data).toBe('User not found in group');
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should return bad request when the users status is not joined', async () => {
+    const groupToDemoteAdmin = await createGroup(
+      {
+        name: 'Group to demote admin',
+        description: 'This is a group to demote admin',
+      },
+      users['ian'].firebaseToken
+    );
+    groups.push(groupToDemoteAdmin.data);
+
+    await addMembers(
+      groupToDemoteAdmin.data.id,
+      {
+        memberIds: [
+          users['david'].firebaseUser.uid,
+          users['oscar'].firebaseUser.uid,
+          users['gabe'].firebaseUser.uid,
+        ],
+      },
+      users['ian'].firebaseToken
+    );
+
+    // Demote an invited but not joined member
+    try {
+      await demoteAdminToMember(
+        groupToDemoteAdmin.data.id,
+        users['david'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+    } catch (e) {
+      expect((e as AxiosError).response?.status).toBe(400);
+      expect((e as AxiosError).response?.data).toBe('User not found in group');
+    }
+
+    // Demote a joined but kicked member
+    try {
+      await changeStatus(
+        groupToDemoteAdmin.data.id,
+        users['oscar'].firebaseUser.uid,
+        'Joined',
+        users['oscar'].firebaseToken
+      );
+
+      await promoteMemberToAdmin(
+        groupToDemoteAdmin.data.id,
+        users['oscar'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToDemoteAdmin.data.id,
+        users['oscar'].firebaseUser.uid,
+        'Kicked',
+        users['ian'].firebaseToken
+      );
+
+      await demoteAdminToMember(
+        groupToDemoteAdmin.data.id,
+        users['oscar'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+    } catch (e) {
+      expect((e as AxiosError).response?.status).toBe(400);
+      expect((e as AxiosError).response?.data).toBe('User not found in group');
+    }
+
+    // Demote a banned member
+    try {
+      await changeStatus(
+        groupToDemoteAdmin.data.id,
+        users['gabe'].firebaseUser.uid,
+        'Joined',
+        users['gabe'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToDemoteAdmin.data.id,
+        users['gabe'].firebaseUser.uid,
+        'Banned',
+        users['ian'].firebaseToken
+      );
+
+      await demoteAdminToMember(
+        groupToDemoteAdmin.data.id,
+        users['gabe'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+    } catch (e) {
+      expect((e as AxiosError).response?.status).toBe(400);
+      expect((e as AxiosError).response?.data).toBe('User not found in group');
+    }
+
+    // Demote a declined member
+    try {
+      await changeStatus(
+        groupToDemoteAdmin.data.id,
+        users['david'].firebaseUser.uid,
+        'Declined',
+        users['david'].firebaseToken
+      );
+
+      await demoteAdminToMember(
+        groupToDemoteAdmin.data.id,
+        users['david'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+    } catch (e) {
+      expect((e as AxiosError).response?.status).toBe(400);
+      expect((e as AxiosError).response?.data).toBe('User not found in group');
+    }
+  });
+
+  it('should not allow a user to demote themselves', async () => {
+    let isError = false;
+    try {
+      const groupToDemoteAdmin = await createGroup(
+        {
+          name: 'Group to demote admin',
+          description: 'This is a group to demote admin',
+        },
+        users['david'].firebaseToken
+      );
+      groups.push(groupToDemoteAdmin.data);
+
+      await addMembers(
+        groupToDemoteAdmin.data.id,
+        { memberIds: [users['ian'].firebaseUser.uid] },
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToDemoteAdmin.data.id,
+        users['ian'].firebaseUser.uid,
+        'Joined',
+        users['ian'].firebaseToken
+      );
+
+      await promoteMemberToAdmin(
+        groupToDemoteAdmin.data.id,
+        users['ian'].firebaseUser.uid,
+        users['david'].firebaseToken
+      );
+
+      await demoteAdminToMember(
+        groupToDemoteAdmin.data.id,
+        users['ian'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(403);
+      expect((e as AxiosError).response?.data).toBe(
+        'You must be the creator of the group to demote an admin to member'
+      );
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should not allow the creator to be demoted', async () => {
+    let isError = false;
+    try {
+      const groupToDemoteAdmin = await createGroup(
+        {
+          name: 'Group to demote admin',
+          description: 'This is a group to demote admin',
+        },
+        users['david'].firebaseToken
+      );
+      groups.push(groupToDemoteAdmin.data);
+
+      await demoteAdminToMember(
+        groupToDemoteAdmin.data.id,
+        users['david'].firebaseUser.uid,
+        users['david'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(403);
+      expect((e as AxiosError).response?.data).toBe(
+        'You cannot edit the creator of the group'
+      );
+    }
+    expect(isError).toBe(true);
+  });
+});
+
+describe('Promoting members to admins', () => {
+  it('should return a 200 status code on a successful promotion', async () => {
+    let isError = false;
+    try {
+      const groupToPromoteAdmin = await createGroup(
+        {
+          name: 'Group to promote admin',
+          description: 'This is a group to promote admin',
+        },
+        users['ian'].firebaseToken
+      );
+
+      groups.push(groupToPromoteAdmin.data);
+
+      await addMembers(
+        groupToPromoteAdmin.data.id,
+        { memberIds: [users['david'].firebaseUser.uid] },
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToPromoteAdmin.data.id,
+        users['david'].firebaseUser.uid,
+        'Joined',
+        users['david'].firebaseToken
+      );
+
+      const response = await promoteMemberToAdmin(
+        groupToPromoteAdmin.data.id,
+        users['david'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+      expect(response.status).toBe(200);
+      expect(response.data).toBe('Member promoted to admin');
+    } catch (e) {
+      isError = true;
+      console.error('Error creating group', (e as AxiosError).response?.data);
+    }
+    expect(isError).toBe(false);
+  });
+
+  it('should return 404 when the group does not exist', async () => {
+    let isError = false;
+    try {
+      await promoteMemberToAdmin(
+        999999,
+        users['david'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(404);
+      expect((e as AxiosError).response?.data).toBe('Group not found');
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should not allow a member that is not in the group to promote another member', async () => {
+    let isError = false;
+    try {
+      const groupToPromoteAdmin = await createGroup(
+        {
+          name: 'Group to promote admin',
+          description: 'This is a group to promote admin',
+        },
+        users['ian'].firebaseToken
+      );
+      groups.push(groupToPromoteAdmin.data);
+
+      await promoteMemberToAdmin(
+        groupToPromoteAdmin.data.id,
+        users['oscar'].firebaseUser.uid,
+        users['david'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(403);
+      expect((e as AxiosError).response?.data).toBe(
+        'You must be a member of the group to promote a member to admin'
+      );
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should not allow a non-admin to promote a member to admin', async () => {
+    let isError = false;
+    try {
+      const groupToPromoteAdmin = await createGroup(
+        {
+          name: 'Group to promote admin',
+          description: 'This is a group to promote admin',
+        },
+        users['david'].firebaseToken
+      );
+      groups.push(groupToPromoteAdmin.data);
+
+      await addMembers(
+        groupToPromoteAdmin.data.id,
+        {
+          memberIds: [
+            users['ian'].firebaseUser.uid,
+            users['oscar'].firebaseUser.uid,
+          ],
+        },
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToPromoteAdmin.data.id,
+        users['ian'].firebaseUser.uid,
+        'Joined',
+        users['ian'].firebaseToken
+      );
+      await changeStatus(
+        groupToPromoteAdmin.data.id,
+        users['oscar'].firebaseUser.uid,
+        'Joined',
+        users['oscar'].firebaseToken
+      );
+
+      await promoteMemberToAdmin(
+        groupToPromoteAdmin.data.id,
+        users['oscar'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(403);
+      expect((e as AxiosError).response?.data).toBe(
+        'You must be an admin to promote a member to admin'
+      );
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should not allow promotion to admin if they do not have a status of joined', async () => {
+    let isError = false;
+    try {
+      const groupToPromoteAdmin = await createGroup(
+        {
+          name: 'Group to promote admin',
+          description: 'This is a group to promote admin',
+        },
+        users['david'].firebaseToken
+      );
+
+      groups.push(groupToPromoteAdmin.data);
+
+      await addMembers(
+        groupToPromoteAdmin.data.id,
+        { memberIds: [users['ian'].firebaseUser.uid] },
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToPromoteAdmin.data.id,
+        users['ian'].firebaseUser.uid,
+        'Joined',
+        users['ian'].firebaseToken
+      );
+
+      await leaveGroup(groupToPromoteAdmin.data.id, users['ian'].firebaseToken);
+
+      await promoteMemberToAdmin(
+        groupToPromoteAdmin.data.id,
+        users['ian'].firebaseUser.uid,
+        users['david'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(400);
+      expect((e as AxiosError).response?.data).toBe('User is not in the group');
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should return 404 if the member to promote does not exist', async () => {
+    let isError = false;
+    try {
+      const groupToPromoteAdmin = await createGroup(
+        {
+          name: 'Group to promote admin',
+          description: 'This is a group to promote admin',
+        },
+        users['david'].firebaseToken
+      );
+
+      groups.push(groupToPromoteAdmin.data);
+
+      await promoteMemberToAdmin(
+        groupToPromoteAdmin.data.id,
+        'invalid-user-id',
+        users['david'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(404);
+      expect((e as AxiosError).response?.data).toBe('User not found in group');
+    }
+  });
+
+  it('should not allow an admin to edit the creator of the group', async () => {
+    let isError = false;
+    try {
+      const groupToPromoteAdmin = await createGroup(
+        {
+          name: 'Group to promote admin',
+          description: 'This is a group to promote admin',
+        },
+        users['david'].firebaseToken
+      );
+      groups.push(groupToPromoteAdmin.data);
+
+      await addMembers(
+        groupToPromoteAdmin.data.id,
+        { memberIds: [users['ian'].firebaseUser.uid] },
+        users['david'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToPromoteAdmin.data.id,
+        users['ian'].firebaseUser.uid,
+        'Joined',
+        users['ian'].firebaseToken
+      );
+
+      await promoteMemberToAdmin(
+        groupToPromoteAdmin.data.id,
+        users['ian'].firebaseUser.uid,
+        users['david'].firebaseToken
+      );
+
+      await promoteMemberToAdmin(
+        groupToPromoteAdmin.data.id,
+        users['david'].firebaseUser.uid,
+        users['ian'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(403);
+      expect((e as AxiosError).response?.data).toBe(
+        'You cannot edit the creator of the group'
+      );
+    }
+    expect(isError).toBe(true);
+  });
+
+  it('should not allow a user to promote themselves', async () => {
+    let isError = false;
+    try {
+      const groupToPromoteAdmin = await createGroup(
+        {
+          name: 'Group to promote admin',
+          description: 'This is a group to promote admin',
+        },
+        users['ian'].firebaseToken
+      );
+      groups.push(groupToPromoteAdmin.data);
+
+      await addMembers(
+        groupToPromoteAdmin.data.id,
+        { memberIds: [users['david'].firebaseUser.uid] },
+        users['ian'].firebaseToken
+      );
+
+      await changeStatus(
+        groupToPromoteAdmin.data.id,
+        users['david'].firebaseUser.uid,
+        'Joined',
+        users['david'].firebaseToken
+      );
+
+      await promoteMemberToAdmin(
+        groupToPromoteAdmin.data.id,
+        users['david'].firebaseUser.uid,
+        users['david'].firebaseToken
+      );
+    } catch (e) {
+      isError = true;
+      expect((e as AxiosError).response?.status).toBe(403);
+      expect((e as AxiosError).response?.data).toBe(
+        'You must be an admin to promote a member to admin'
+      );
+    }
+    expect(isError).toBe(true);
+  });
+});
+
 /* Add tests that handle a case where a user deletes their account
  * 1. group rights should be transferred to another user
  * 2. user information should be removed from all transactions without deleting transactions
@@ -4227,6 +6192,30 @@ describe('Removing a group member', () => {
  */
 
 afterAll(async () => {
+  try {
+    const allGroupsResponse = await getAllGroups();
+    for (const group of groups) {
+      // Delete group
+      const currentGroupId = group.id;
+      const groupToDelete = allGroupsResponse.data.find(
+        (g) => g.id === currentGroupId
+      );
+      if (!groupToDelete) {
+        continue;
+      }
+      const firstName = groupToDelete.createdBy?.firstName;
+
+      await deleteGroup(
+        groupToDelete.id,
+        users[firstName || 'not found']?.firebaseToken
+      );
+    }
+  } catch (error) {
+    console.error(
+      'Error deleting groups',
+      (error as AxiosError).response?.data
+    );
+  }
   try {
     for (const user in users) {
       // Delete user which should also delete all associated groups
