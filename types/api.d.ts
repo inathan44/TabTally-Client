@@ -53,12 +53,10 @@ export type Transaction = {
 export type TransactionDetail = {
   id: number;
   transactionId: number;
-  payerId: string;
   recipientId: string;
   groupId: number;
   amount: number;
   transaction?: Transaction;
-  payer?: User;
   recipient?: User;
   group?: Group;
 };
@@ -117,6 +115,11 @@ type UpdateTransactionDTO = {
   transactionDetails?: UpdateTransactionDetailsDTO[];
 };
 
+type UpdateTransactionDetailsDTO = {
+  amount: number;
+  recipientId: string;
+};
+
 export type UpdateUserBody = {
   email?: string;
   username?: string;
@@ -173,10 +176,69 @@ export type GetGroupResponse = {
   transactions: Transaction[];
 };
 
+export type GetTransactionResponse = TransactionSummary & {
+  group?: GroupSummaryDTO;
+};
+
 // *********************** Other ***********************
 export type CreatedUser = {
   firebaseUser: FirebaseUser;
   firebaseToken: string;
   status: number;
   mockUser: UpdateUserBody;
+};
+
+export type TransactionDetailSummary = {
+  id: number;
+  transactionId: number;
+  recipientId: string | null;
+  recipient: UserSummaryDTO | null;
+  amount: number;
+};
+
+export type TransactionSummary = {
+  id: number;
+  amount: number;
+  createdById: string | null;
+  createdBy: UserSummaryDTO | null;
+  payerId: string | null;
+  payer: UserSummaryDTO | null;
+  description: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  groupId: number;
+  transactionDetails: TransactionDetailSummary[];
+};
+
+export type GroupSummaryDTO = {
+  id: number;
+  name: string;
+  description: string;
+  createdById: number;
+  createdBy: UserSummaryDTO | null;
+  createdAt: Date;
+  updatedAt: Date;
+  groupMembers: GroupMemberSummaryDTO[];
+  transactions: TransactionSummary[];
+};
+
+export type UserSummaryDTO = {
+  id: string;
+  username: string;
+  firstName: string;
+  lastName: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type GroupMemberSummaryDTO = {
+  id: number;
+  memberId: string;
+  member: UserSummaryDTO;
+  invitedById: string;
+  invitedBy: UserSummaryDTO;
+  isAdmin: boolean;
+  status: GroupMemberStatus;
+  createdAt: Date;
+  updatedAt: Date;
 };
