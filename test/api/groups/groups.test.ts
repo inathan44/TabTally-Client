@@ -8,9 +8,6 @@ import {
   createUserInDbAndFirebase,
   deleteUserFromDbAndFirebase,
   generateMockUserInformation,
-  getUserGroups,
-  getUser,
-  updateUser,
 } from '../../../utils/userhelpers';
 import {
   addMembers,
@@ -55,11 +52,6 @@ describe('Create and setup users', () => {
         ...generateMockUserInformation(),
         firstName: 'gabe',
       });
-      // await new Promise((resolve) => setTimeout(resolve, 600));
-      // users['ev'] = await createUserInDbAndFirebase({
-      //   ...generateMockUserInformation(),
-      //   firstName: 'ev',
-      // });
     } catch (e) {
       isError = true;
       console.error('Error creating user', e);
@@ -853,6 +845,19 @@ describe('Getting one group', () => {
       );
       expect(group.transactions?.[1].transactionDetails).toBeDefined();
       expect(group.transactions?.[1].transactionDetails?.length).toBe(2);
+      for (const transaction of group.transactions || []) {
+        expect(transaction.transactionDetails).toBeDefined();
+        expect(transaction.transactionDetails?.length).toBeGreaterThan(0);
+        for (const transactionDetail of transaction.transactionDetails || []) {
+          expect(Object.keys(transactionDetail)).toEqual([
+            'id',
+            'transactionId',
+            'recipientId',
+            'recipient',
+            'amount',
+          ]);
+        }
+      }
     } catch (e) {
       isError = true;
       console.error('Error getting groups', e);
@@ -2930,10 +2935,6 @@ describe('leaving a group', () => {
       expect(transactionDetails?.[0].recipientId).toBe(null);
       expect(transactionDetails?.[0].recipient).toBe(null);
       expect(transactionDetails?.[0].amount).toBe(100);
-      expect(transactionDetails?.[0].payerId).toBe(
-        users['ian'].firebaseUser.uid
-      );
-      expect(transactionDetails?.[0].payer).toBeDefined();
     } catch (e) {
       isError = true;
       console.error('Error leaving group', (e as AxiosError).response?.data);
@@ -2995,8 +2996,6 @@ describe('leaving a group', () => {
       );
       expect(transactionDetails?.[0].recipient).toBeDefined();
       expect(transactionDetails?.[0].amount).toBe(100);
-      expect(transactionDetails?.[0].payerId).toBe(null);
-      expect(transactionDetails?.[0].payer).toBe(null);
     } catch (e) {
       isError = true;
       console.error('Error leaving group', e);
@@ -3065,10 +3064,6 @@ describe('leaving a group', () => {
       expect(transaction.createdBy).toBeNull();
       expect(transaction.createdById).toBeNull();
       expect(transaction.transactionDetails?.length).toBe(2);
-      expect(transaction.transactionDetails?.[0].payerId).toBe(
-        users['ian'].firebaseUser.uid
-      );
-      expect(transaction.transactionDetails?.[0].payer).toBeDefined();
     } catch (e) {
       isError = true;
       console.error('Error leaving group', (e as AxiosError).response?.data);
@@ -6611,12 +6606,6 @@ describe('transferring ownership of a group', () => {
     expect(isError).toBe(true);
   });
 });
-
-/* Add tests that handle a case where a user deletes their account
- * 1. group rights should be transferred to another user
- * 2. user information should be removed from all transactions without deleting transactions
- * 3. records should be deleted from all groups without deleting groups
- */
 
 afterAll(async () => {
   try {
