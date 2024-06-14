@@ -26,24 +26,28 @@ export async function updateUser(
   );
 }
 
+async function createUserInDb(body: UpdateUserBody, token: string) {
+  return await axios.post('http://localhost:5217/api/v1/Users/create', body, {
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
 export async function deleteUserFromDbAndFirebase(
   userId: string,
   token: string
 ) {
-  try {
-    return await axios.delete(
-      `http://localhost:5217/api/v1/Users/${userId}/delete`,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
-  } catch (error) {
-    const axiosError = error as AxiosError;
-    console.error('deleting user error', axiosError.response?.data);
-  }
+  return await axios.delete(
+    `http://localhost:5217/api/v1/Users/${userId}/delete`,
+    {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
 }
 
 export async function createUserInDbAndFirebase(body: UpdateUserBody) {
@@ -78,7 +82,7 @@ export async function createUserInDbAndFirebase(body: UpdateUserBody) {
   try {
     const token = await createdUserObject.user.getIdToken();
 
-    const response = await updateUser(createdUserObject.user.uid, body, token);
+    const response = await createUserInDb(body, token);
     updatedCreatedUserStatus = response.status;
   } catch (error) {
     const axiosError = error as AxiosError;
@@ -109,18 +113,6 @@ export function generateMockUserInformation() {
   const username = faker.internet.userName();
 
   return { email, firstName, lastName, username };
-}
-
-export async function createMockUsersInDbAndFirebase(numberOfUsers: number) {
-  const users: User[] = [];
-  for (let i = 0; i < numberOfUsers; i++) {
-    const userInformation = generateMockUserInformation();
-    const { firebaseUser: user } = await createUserInDbAndFirebase(
-      userInformation
-    );
-    users.push(user);
-  }
-  return users;
 }
 
 export async function getUser(userId: string, token: string) {
